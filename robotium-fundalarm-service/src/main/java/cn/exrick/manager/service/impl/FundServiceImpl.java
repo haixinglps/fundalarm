@@ -512,7 +512,7 @@ public class FundServiceImpl implements FundService {
 								}
 							} else {
 
-								throw new XmallException("return【追涨】买入后获取订单异常");
+								// throw new XmallException("return【追涨】买入后获取订单异常");
 
 							}
 
@@ -909,7 +909,7 @@ public class FundServiceImpl implements FundService {
 //							}
 //							throw new XmallException("【补仓买入后】okx订单接口异常:" + keyString);
 
-							throw new XmallException("return【补仓买入后】okx订单接口异常:" + keyString);
+							// throw new XmallException("return【补仓买入后】okx订单接口异常:" + keyString);
 
 						}
 //						} else {
