@@ -18,7 +18,9 @@
       "Bash(grep -n \"^[[:space:]]*}[[:space:]]*$\\\\|^[[:space:]]*else\\\\|^[[:space:]]*catch\\\\|^[[:space:]]*try\")",
       "Bash(python3 /tmp/fix_braces.py)",
       "Bash(python /tmp/fix_braces.py)",
-      "Bash(ls -la target/*.war)"
+      "Bash(ls -la target/*.war)",
+      "Bash(find /home/www/code/fundalarmcode -name \"*.java\" -exec grep -l \"class JedisClient\\\\|public class JedisClient\" {} \\\\;)",
+      "Bash(xargs strings:*)"
     ]
   }
 }
