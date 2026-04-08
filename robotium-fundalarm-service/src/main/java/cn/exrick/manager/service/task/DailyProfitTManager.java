@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import cn.exrick.common.jedis.JedisClient;
 import cn.hutool.core.util.StrUtil;
@@ -22,7 +23,7 @@ import cn.hutool.json.JSONUtil;
  * 核心理念：不求每笔都赚，但求每天正收益 - 日盈利目标：0.15%（达成后停止开新仓） - 日亏损上限：0.1%（触及后当日停止交易） -
  * 连续2笔亏损后暂停30分钟 - 只在高概率场景（评分>80分）才交易 - 多重过滤：趋势+RSI+成交量+波动率
  */
-//@Component
+@Component
 public class DailyProfitTManager {
 
 	@Autowired
