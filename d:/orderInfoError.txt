@@ -1,0 +1,75 @@
+2026-04-08 10:22:00【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-176 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=ef0a9520ee5a4bfba870c4441e4c709d&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:01【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-175 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=95b3d57dc82e47b59c6e453da1fb947c&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:02【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-174 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=8750b10745eb4976a6ecb601d309dc97&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:03【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-173 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=2b84ce68fc6f404ab89f05588ae60279&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:04【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-172 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=553dce091f6743c493ebc75fc73b5061&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:05【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-171 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=84017a295eaa47468804180b62154cfa&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:06【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-170 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=ffd3df3923ff4f89b3b3073a7eae2bfd&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:07【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-169 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=c4003cfc9d7f4b11a67399de41fa75f3&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:08【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-168 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=644712bf74f041b09314dac04fe81fcf&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:09【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-167 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=002a7e96cda84c92921080a4c56076cd&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:10【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-166 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=eea49ef319604173980adcf6fca88675&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:11【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-165 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=1760530cde5d4303996466fbde04bcb5&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:12【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-164 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=820065e4c8d24bdb936ee28c3acb7345&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:13【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-163 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=9e261d93ef424f08932e303b60b6d30c&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:14【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-162 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=e0ffa6945dfe469ba748a1135ec75cb5&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:15【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-162 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=b56002a300de49f8a2d9416b25b21743&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:16【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-161 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=dda23fe0184b4eb184f627ba5c391f8b&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:17【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-161 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=4ea75da3523e4f1a9e7c0ac6f3261033&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:18【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-160 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=e1c7871b6f524713be3a5801be22bd32&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:19【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-160 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=32d6136b683640308936781d7ba90800&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:20【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-158 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=ba08748ac7e34c5b8a8dddc5549365e6&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:21【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-158 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=ea428b8d286549999cac3298707d4916&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:22【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-157 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=88ca125d86c448c990de9dbbed0a46bf&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:23【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-157 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=406a23199ef14586b7fbb28c5c13b77d&instId=DOGE-USDT-SWAP
+----
+2026-04-08 10:22:28【止盈，止损，平仓，对冲-做多】后获取订单异常： level:-177 {"code":"51603","data":[],"msg":"Order does not exist","newCode":"","traceId":""}
+?clOrdId=3c083708182e414d935ea65448342aa5&instId=DOGE-USDT-SWAP
+----

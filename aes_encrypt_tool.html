@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QQ Bot AES-256 加密工具</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            font-size: 1.5em;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        .result-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        .copy-btn {
+            background: #28a745;
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #218838;
+        }
+        .info {
+            color: #666;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        .warning {
+            color: #856404;
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .step {
+            color: #007bff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 QQ Bot AES-256 加密工具</h1>
+    
+    <div class="warning">
+        <strong>⚠️ 重要：</strong>QQ Bot 明文搜索已关闭，必须使用此工具加密后发送。<br>
+        <strong>使用方法：</strong>输入关键词 → 加密 → 复制密文 → 直接发送到 QQ。
+    </div>
+
+    <div class="card">
+        <label>密钥（固定）</label>
+        <input type="text" id="key" value="GqAE@n^m0ZFI8e&1o5V4" readonly>
+        <p class="info">密钥长度: <span id="keyLength">20</span> 字节 → 自动补 0 到 32 字节</p>
+    </div>
+
+    <div class="card">
+        <label for="plaintext">输入关键词</label>
+        <textarea id="plaintext" placeholder="例如：美女"></textarea>
+        
+        <button onclick="encrypt()">🔒 加密</button>
+    </div>
+
+    <div id="resultArea" style="display:none;">
+        <div class="card">
+            <span class="step">步骤 1:</span> 关键词 Base64 编码
+            <div class="result">
+                <div class="result-label">Base64</div>
+                <span id="base64Result"></span>
+            </div>
+        </div>
+
+        <div class="card">
+            <span class="step">步骤 2:</span> AES-256-ECB 加密
+            <div class="result">
+                <div class="result-label">密文 (Base64)</div>
+                <span id="aesResult"></span>
+            </div>
+            <button class="copy-btn" onclick="copyResult()">📋 复制结果</button>
+        </div>
+
+        <div class="card">
+            <span class="step">步骤 3:</span> 发送到 QQ Bot（直接发送密文，无需前缀）
+            <div class="result">
+                <div class="result-label">直接发送以下内容</div>
+                <span id="finalCommand"></span>
+            </div>
+            <button class="copy-btn" onclick="copyCommand()">📋 复制密文</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>📖 使用说明</h3>
+        <ol class="info">
+            <li>输入你要搜索的关键词</li>
+            <li>点击"加密"按钮</li>
+            <li>复制生成的密文</li>
+            <li>在 QQ 中<strong>直接发送密文</strong>（无需任何前缀）</li>
+            <li>机器人自动识别密文并返回搜索结果</li>
+        </ol>
+        <p class="info"><strong>加密标准：</strong>AES-256-ECB + PKCS7 + Base64</p>
+        <p class="info"><strong>密钥处理：</strong>字符串 UTF-8 编码，不足 32 字节补 0</p>
+        <p class="info"><strong>安全性：</strong>密文传输，腾讯服务器无法识别真实关键词</p>
+    </div>
+
+    <script>
+        // 密钥长度显示
+        document.getElementById('key').addEventListener('input', function() {
+            const key = this.value;
+            document.getElementById('keyLength').textContent = new Blob([key]).size;
+        });
+
+        function adjustKeyLength(key, length) {
+            const encoder = new TextEncoder();
+            const keyBytes = encoder.encode(key);
+            const result = new Uint8Array(length);
+            
+            if (keyBytes.length >= length) {
+                result.set(keyBytes.slice(0, length));
+            } else {
+                result.set(keyBytes);
+                // 剩余补 0
+                for (let i = keyBytes.length; i < length; i++) {
+                    result[i] = 0;
+                }
+            }
+            return result;
+        }
+
+        function encrypt() {
+            const plaintext = document.getElementById('plaintext').value.trim();
+            const key = document.getElementById('key').value;
+            
+            if (!plaintext) {
+                alert('请输入关键词');
+                return;
+            }
+
+            // 步骤 1: Base64 编码
+            const base64Str = CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(plaintext));
+            document.getElementById('base64Result').textContent = base64Str;
+
+            // 步骤 2: AES-256-ECB 加密
+            // CryptoJS 使用 WordArray，需要调整密钥
+            const keyBytes = adjustKeyLength(key, 32);
+            const keyWordArray = CryptoJS.lib.WordArray.create(keyBytes);
+            
+            const encrypted = CryptoJS.AES.encrypt(
+                base64Str,
+                keyWordArray,
+                {
+                    mode: CryptoJS.mode.ECB,
+                    padding: CryptoJS.pad.Pkcs7
+                }
+            );
+
+            const encryptedBase64 = encrypted.toString();
+            document.getElementById('aesResult').textContent = encryptedBase64;
+            document.getElementById('finalCommand').textContent = encryptedBase64;
+
+            document.getElementById('resultArea').style.display = 'block';
+        }
+
+        function copyResult() {
+            const text = document.getElementById('aesResult').textContent;
+            copyToClipboard(text);
+        }
+
+        function copyCommand() {
+            const text = document.getElementById('finalCommand').textContent;
+            copyToClipboard(text);
+        }
+
+        function copyToClipboard(text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('已复制到剪贴板');
+                });
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('已复制到剪贴板');
+            }
+        }
+    </script>
+</body>
+</html>

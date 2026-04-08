@@ -1,0 +1,14 @@
+{
+  "users": {
+    "A5FF9CF8165F456CD8B779AFE8A351FE": {
+      "appId": "1903745193",
+      "clientSecret": "MnBZuBHKKORVVegc",
+      "name": "示例用户"
+    }
+  },
+  "defaultConfig": {
+    "appId": "1903745193",
+    "clientSecret": "MnBZuBHKKORVVegc",
+    "name": "默认机器人"
+  }
+}

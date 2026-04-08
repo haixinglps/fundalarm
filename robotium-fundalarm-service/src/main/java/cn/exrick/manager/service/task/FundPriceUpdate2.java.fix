@@ -1,0 +1,28 @@
+						// 【公共】计算ATR（供底仓止盈和T交易共用）
+							BigDecimal atrPercent = null;
+							List<cn.exrick.manager.service.util.Candle> candles = null;
+							try {
+								// 获取15根1分钟K线（用于计算14周期ATR）
+								String klineUrl = "https://www.okx.com/api/v5/market/candles?instId=" + fund.getCode() + "&bar=1m&limit=15";
+								System.out.println("【诊断】开始获取K线: " + fund.getCode());
+								candles = cn.exrick.manager.service.util.okx.getline(klineUrl);
+								System.out.println("【诊断】K线获取结果: " + fund.getCode() + " candles=" + (candles == null ? "null" : candles.size()));
+								if (candles != null && candles.size() >= 15) {
+									atrPercent = dailyProfitTManager.calculateATRFromKlines(candles, jingzhi);
+									
+									// ===== 计算RSI并写入Redis =====
+									try {
+										BigDecimal rsiValue = calculateRSIFromCandles(candles);
+										jedisClient.setex("rsi:" + fund.getCode(), 60, rsiValue.toString()); // 60秒过期
+										System.out.println("【RSI计算】" + fund.getCode() + "=" + rsiValue);
+									} catch (Exception rsiEx) {
+										System.out.println("【RSI计算】失败: " + rsiEx.getMessage());
+										rsiEx.printStackTrace();
+									}
+								} else {
+									System.out.println("【诊断】K线数量不足15根: " + fund.getCode() + " size=" + (candles == null ? "null" : candles.size()));
+								}
+							} catch (Exception e) {
+								System.out.println("【诊断】K线获取异常: " + fund.getCode() + " " + e.getMessage());
+								e.printStackTrace();
+							}

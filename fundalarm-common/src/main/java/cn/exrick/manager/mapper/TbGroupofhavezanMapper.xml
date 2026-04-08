@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.exrick.manager.mapper.TbGroupofhavezanMapper">
+  <resultMap id="BaseResultMap" type="cn.exrick.manager.pojo.TbGroupofhavezan">
+    <id column="Id" jdbcType="INTEGER" property="id" />
+    <result column="robotid" jdbcType="BIGINT" property="robotid" />
+    <result column="execuatecount" jdbcType="INTEGER" property="execuatecount" />
+    <result column="dt" jdbcType="TIMESTAMP" property="dt" />
+    <result column="updatetime" jdbcType="TIMESTAMP" property="updatetime" />
+    <result column="zansuccesstag" jdbcType="INTEGER" property="zansuccesstag" />
+  </resultMap>
+  <sql id="Example_Where_Clause">
+    <where>
+      <foreach collection="oredCriteria" item="criteria" separator="or">
+        <if test="criteria.valid">
+          <trim prefix="(" prefixOverrides="and" suffix=")">
+            <foreach collection="criteria.criteria" item="criterion">
+              <choose>
+                <when test="criterion.noValue">
+                  and ${criterion.condition}
+                </when>
+                <when test="criterion.singleValue">
+                  and ${criterion.condition} #{criterion.value}
+                </when>
+                <when test="criterion.betweenValue">
+                  and ${criterion.condition} #{criterion.value} and #{criterion.secondValue}
+                </when>
+                <when test="criterion.listValue">
+                  and ${criterion.condition}
+                  <foreach close=")" collection="criterion.value" item="listItem" open="(" separator=",">
+                    #{listItem}
+                  </foreach>
+                </when>
+              </choose>
+            </foreach>
+          </trim>
+        </if>
+      </foreach>
+    </where>
+  </sql>
+  <sql id="Update_By_Example_Where_Clause">
+    <where>
+      <foreach collection="example.oredCriteria" item="criteria" separator="or">
+        <if test="criteria.valid">
+          <trim prefix="(" prefixOverrides="and" suffix=")">
+            <foreach collection="criteria.criteria" item="criterion">
+              <choose>
+                <when test="criterion.noValue">
+                  and ${criterion.condition}
+                </when>
+                <when test="criterion.singleValue">
+                  and ${criterion.condition} #{criterion.value}
+                </when>
+                <when test="criterion.betweenValue">
+                  and ${criterion.condition} #{criterion.value} and #{criterion.secondValue}
+                </when>
+                <when test="criterion.listValue">
+                  and ${criterion.condition}
+                  <foreach close=")" collection="criterion.value" item="listItem" open="(" separator=",">
+                    #{listItem}
+                  </foreach>
+                </when>
+              </choose>
+            </foreach>
+          </trim>
+        </if>
+      </foreach>
+    </where>
+  </sql>
+  <sql id="Base_Column_List">
+    Id, robotid, execuatecount, dt, updatetime, zansuccesstag
+  </sql>
+  <select id="selectByExample" parameterType="cn.exrick.manager.pojo.TbGroupofhavezanExample" resultMap="BaseResultMap">
+    select
+    <if test="distinct">
+      distinct
+    </if>
+    <include refid="Base_Column_List" />
+    from tb_groupofhavezan
+    <if test="_parameter != null">
+      <include refid="Example_Where_Clause" />
+    </if>
+    <if test="orderByClause != null">
+      order by ${orderByClause}
+    </if>
+  </select>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Integer" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from tb_groupofhavezan
+    where Id = #{id,jdbcType=INTEGER}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Integer">
+    delete from tb_groupofhavezan
+    where Id = #{id,jdbcType=INTEGER}
+  </delete>
+  <delete id="deleteByExample" parameterType="cn.exrick.manager.pojo.TbGroupofhavezanExample">
+    delete from tb_groupofhavezan
+    <if test="_parameter != null">
+      <include refid="Example_Where_Clause" />
+    </if>
+  </delete>
+  <insert id="insert" parameterType="cn.exrick.manager.pojo.TbGroupofhavezan">
+    insert into tb_groupofhavezan (Id, robotid, execuatecount, 
+      dt, updatetime, zansuccesstag
+      )
+    values (#{id,jdbcType=INTEGER}, #{robotid,jdbcType=BIGINT}, #{execuatecount,jdbcType=INTEGER}, 
+      #{dt,jdbcType=TIMESTAMP}, #{updatetime,jdbcType=TIMESTAMP}, #{zansuccesstag,jdbcType=INTEGER}
+      )
+  </insert>
+  <insert id="insertSelective" parameterType="cn.exrick.manager.pojo.TbGroupofhavezan">
+    insert into tb_groupofhavezan
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        Id,
+      </if>
+      <if test="robotid != null">
+        robotid,
+      </if>
+      <if test="execuatecount != null">
+        execuatecount,
+      </if>
+      <if test="dt != null">
+        dt,
+      </if>
+      <if test="updatetime != null">
+        updatetime,
+      </if>
+      <if test="zansuccesstag != null">
+        zansuccesstag,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=INTEGER},
+      </if>
+      <if test="robotid != null">
+        #{robotid,jdbcType=BIGINT},
+      </if>
+      <if test="execuatecount != null">
+        #{execuatecount,jdbcType=INTEGER},
+      </if>
+      <if test="dt != null">
+        #{dt,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatetime != null">
+        #{updatetime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="zansuccesstag != null">
+        #{zansuccesstag,jdbcType=INTEGER},
+      </if>
+    </trim>
+  </insert>
+  <select id="countByExample" parameterType="cn.exrick.manager.pojo.TbGroupofhavezanExample" resultType="java.lang.Long">
+    select count(*) from tb_groupofhavezan
+    <if test="_parameter != null">
+      <include refid="Example_Where_Clause" />
+    </if>
+  </select>
+  <update id="updateByExampleSelective" parameterType="map">
+    update tb_groupofhavezan
+    <set>
+      <if test="record.id != null">
+        Id = #{record.id,jdbcType=INTEGER},
+      </if>
+      <if test="record.robotid != null">
+        robotid = #{record.robotid,jdbcType=BIGINT},
+      </if>
+      <if test="record.execuatecount != null">
+        execuatecount = #{record.execuatecount,jdbcType=INTEGER},
+      </if>
+      <if test="record.dt != null">
+        dt = #{record.dt,jdbcType=TIMESTAMP},
+      </if>
+      <if test="record.updatetime != null">
+        updatetime = #{record.updatetime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="record.zansuccesstag != null">
+        zansuccesstag = #{record.zansuccesstag,jdbcType=INTEGER},
+      </if>
+    </set>
+    <if test="_parameter != null">
+      <include refid="Update_By_Example_Where_Clause" />
+    </if>
+  </update>
+  <update id="updateByExample" parameterType="map">
+    update tb_groupofhavezan
+    set Id = #{record.id,jdbcType=INTEGER},
+      robotid = #{record.robotid,jdbcType=BIGINT},
+      execuatecount = #{record.execuatecount,jdbcType=INTEGER},
+      dt = #{record.dt,jdbcType=TIMESTAMP},
+      updatetime = #{record.updatetime,jdbcType=TIMESTAMP},
+      zansuccesstag = #{record.zansuccesstag,jdbcType=INTEGER}
+    <if test="_parameter != null">
+      <include refid="Update_By_Example_Where_Clause" />
+    </if>
+  </update>
+  <update id="updateByPrimaryKeySelective" parameterType="cn.exrick.manager.pojo.TbGroupofhavezan">
+    update tb_groupofhavezan
+    <set>
+      <if test="robotid != null">
+        robotid = #{robotid,jdbcType=BIGINT},
+      </if>
+      <if test="execuatecount != null">
+        execuatecount = #{execuatecount,jdbcType=INTEGER},
+      </if>
+      <if test="dt != null">
+        dt = #{dt,jdbcType=TIMESTAMP},
+      </if>
+      <if test="updatetime != null">
+        updatetime = #{updatetime,jdbcType=TIMESTAMP},
+      </if>
+      <if test="zansuccesstag != null">
+        zansuccesstag = #{zansuccesstag,jdbcType=INTEGER},
+      </if>
+    </set>
+    where Id = #{id,jdbcType=INTEGER}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="cn.exrick.manager.pojo.TbGroupofhavezan">
+    update tb_groupofhavezan
+    set robotid = #{robotid,jdbcType=BIGINT},
+      execuatecount = #{execuatecount,jdbcType=INTEGER},
+      dt = #{dt,jdbcType=TIMESTAMP},
+      updatetime = #{updatetime,jdbcType=TIMESTAMP},
+      zansuccesstag = #{zansuccesstag,jdbcType=INTEGER}
+    where Id = #{id,jdbcType=INTEGER}
+  </update>
+</mapper>

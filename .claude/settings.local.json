@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /home/www/tomcat*/logs/)",
+      "Read(//var/log/**)",
+      "Bash(redis-cli keys:*)",
+      "Bash(redis-cli get:*)",
+      "Bash(redis-cli:*)",
+      "Bash(grep -E 't:position.*T[0-9]+$')",
+      "Bash(xargs -I {} redis-cli -n 4 del {})",
+      "Bash(mvn clean:*)",
+      "Bash(awk 'NR>=1940 && NR<=2110' src/main/java/cn/exrick/manager/service/task/FundPriceUpdate2.java)",
+      "Bash(ls -la /home/www/code/fundalarmcode/robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/task/*.bak)",
+      "Bash(javac -d /tmp/compiled -sourcepath src/main/java src/main/java/cn/exrick/manager/service/task/FundPriceUpdate2.java)",
+      "Bash(cp src/main/java/cn/exrick/manager/service/task/FundPriceUpdate2.java.backup /tmp/fundprice_broken.java)",
+      "Bash(cp /tmp/fundprice_broken.java src/main/java/cn/exrick/manager/service/task/FundPriceUpdate2.java)",
+      "Bash(awk 'NR>=1935 && NR<=2260' src/main/java/cn/exrick/manager/service/task/FundPriceUpdate2.java)",
+      "Bash(grep -n \"^[[:space:]]*}[[:space:]]*$\\\\|^[[:space:]]*else\\\\|^[[:space:]]*catch\\\\|^[[:space:]]*try\")",
+      "Bash(python3 /tmp/fix_braces.py)",
+      "Bash(python /tmp/fix_braces.py)",
+      "Bash(ls -la target/*.war)"
+    ]
+  }
+}

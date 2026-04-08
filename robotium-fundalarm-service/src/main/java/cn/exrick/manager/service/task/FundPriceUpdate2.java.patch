@@ -1,0 +1,16 @@
+1139,1145c1139,1146
+< 							}
+< 								} else {
+< 									System.out.println("【诊断】K线数量不足15根: " + fund.getCode() + " size=" + (candles == null ? "null" : candles.size()));
+< 							} catch (Exception e) {
+< 								System.out.println("【诊断】K线获取异常: " + fund.getCode() + " " + e.getMessage());
+< 									e.printStackTrace();
+< 							}
+---
+> 							} else {
+> 								System.out.println("【诊断】K线数量不足15根: " + fund.getCode() + " size=" + (candles == null ? "null" : candles.size()));
+> 							}
+> 						} catch (Exception e) {
+> 							System.out.println("【诊断】K线获取异常: " + fund.getCode() + " " + e.getMessage());
+> 							e.printStackTrace();
+> 						}

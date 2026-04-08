@@ -1,0 +1,123 @@
+package cn.exrick.manager.service.task;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
+import cn.exrick.manager.service.util.AlarmPlayer;
+
+public class test {
+
+	public static void main(String[] args) {
+		System.out.println("url:" + url);
+		System.out.println(resultString);
+		try {
+			JSONObject jsonObject = new JSONObject(resultString.replace("jsonpgz(", "").replace(");", ""));
+			BigDecimal jingzhi = jsonObject.getBigDecimal("gsz");
+
+			String lastvalue = jedisClient.get("lastvalue_" + fund.getCode());
+			if (lastvalue != null) {
+				BigDecimal lBigDecimal = new BigDecimal(lastvalue);
+				if (jingzhi.compareTo(lBigDecimal) > 0) {
+					newFund.setQushi("↑");
+				} else {
+					newFund.setQushi("↓");
+				}
+				caiService.updateFund(newFund);
+			}
+			jedisClient.setex("lastvalue_" + fund.getCode(), 86400, jingzhi.toString());
+
+			System.out.println("成功更新基金价格：" + fundInfo.getName());
+			if ((jingzhi.compareTo(maxP) >= 0 || jingzhi.compareTo(minP) <= 0)
+					&& jingzhi.compareTo(new BigDecimal("0")) != 0) {
+				// 提醒用户卖出或买入
+				System.out.println("需要买入或卖出此基金：" + fundInfo.getName());
+				if (jingzhi.compareTo(maxP) >= 0)
+					caiService.updateCurrentPrice(tableName, jingzhi, 2, fundInfo.getBuypriceReal(),
+							jsonObject.getBigDecimal("gszzl"));
+				else {
+					caiService.updateCurrentPrice(tableName, jingzhi, 1, fundInfo.getBuypriceReal(),
+							jsonObject.getBigDecimal("gszzl"));
+
+				}
+
+//							caiService.updateCurrentPrice(tableName, jingzhi, 1, fundInfo.getBuyprice(),
+//									jsonObject.getBigDecimal("gszzl"));
+//							if (fundInfo.getName() != null && fundInfo.getName().indexOf("alarm") != -1)
+//								AlarmPlayer.playAlarm();
+
+				if (fundInfo.getName() != null && fundInfo.getName().indexOf("alarm") != -1) {
+
+					try {
+						HttpUtil.sendGet("https://rpa.insfair.cn/api/rpa/message/forward?uid=80");
+					} catch (Exception e) {
+						try {
+							HttpUtil.sendGet("http://192.168.188.190/api/rpa/message/forward?uid=80");
+						} catch (Exception e2) {
+							// TODO: handle exception
+						}
+
+						// TODO: handle exception
+					}
+					AlarmPlayer.playAlarm();
+
+				}
+
+			} else {
+				// 更新数据库最新基金价格：
+				BigDecimal chaju = jingzhi.subtract(fundInfo.getBuypriceReal());
+				BigDecimal dxzzl = chaju.divide(fundInfo.getBuypriceReal(), 4, RoundingMode.DOWN)
+						.multiply(new BigDecimal("100"));
+//							if (fundInfo.getName() != null && fundInfo.getName().indexOf("star") != -1
+//									&& (jingzhi.compareTo(new BigDecimal(fundInfo.getCate())) >= 0))
+//								AlarmPlayer.playAlarm();
+//
+//							if (fundInfo.getName() != null && fundInfo.getName().indexOf("stop") != -1
+//									&& (jingzhi.compareTo(new BigDecimal(fundInfo.getCatedown())) <= 0))
+//								AlarmPlayer.playAlarm();
+//
+//							caiService.updateCurrentPrice(tableName, jingzhi, 0, fundInfo.getBuypriceReal(),
+//									jsonObject.getBigDecimal("gszzl"));
+
+				int alarmtag = 0;
+				if (fundInfo.getName() != null && fundInfo.getName().indexOf("star") != -1
+						&& (jingzhi.compareTo(new BigDecimal(fundInfo.getCate())) >= 0)) {
+					alarmtag = 3;
+
+				}
+
+				if (fundInfo.getName() != null && fundInfo.getName().indexOf("stop") != -1
+						&& (jingzhi.compareTo(new BigDecimal(fundInfo.getCatedown())) <= 0)) {
+					alarmtag = 3;
+
+				}
+
+				caiService.updateCurrentPrice(tableName, jingzhi, alarmtag, fundInfo.getBuypriceReal(),
+						jsonObject.getBigDecimal("gszzl"));
+				if (alarmtag == 3) {
+
+					try {
+						HttpUtil.sendGet("https://rpa.insfair.cn/api/rpa/message/forward?uid=80");
+					} catch (Exception e) {
+						try {
+							HttpUtil.sendGet("http://192.168.188.190/api/rpa/message/forward?uid=80");
+						} catch (Exception e2) {
+							// TODO: handle exception
+						}
+
+						// TODO: handle exception
+					}
+					AlarmPlayer.playAlarm();
+				}
+
+			}
+			// 更新今日涨幅
+//						fund.setZhangdiefu(jsonObject.getBigDecimal("gszzl"));
+//						caiService.updateIndex(tableName, tag);
+		} catch (Exception e) {
+			// TODO: handle exception
+			e.printStackTrace();
+			System.out.println("更新基金价格失败：" + fundInfo.getName());
+		}
+	}
+
+}

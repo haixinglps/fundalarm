@@ -1,0 +1,29 @@
+{
+  "bots": [
+    {
+      "appId": "1903745193",
+      "clientSecret": "MnBZuBHKKORVVegc",
+      "name": "机器人1"
+    },
+    {
+      "appId": "1903756971",
+      "clientSecret": "HLPTXbfkpuz49EKQWciou18FMTaiqy6E",
+      "name": "机器人2"
+    },
+    {
+      "appId": "1903768319",
+      "clientSecret": "5kP5lS9raJ3nYJ5sfTI7xofXQJD83zwt",
+      "name": "机器人3"
+    },
+    {
+      "appId": "1903777125",
+      "clientSecret": "wLkAa1SuNqKoJoKqNudM6rcOBymaPF5w",
+      "name": "机器人4"
+    },
+    {
+      "appId": "1903781933",
+      "clientSecret": "gHgsujKhqlTxDKFw",
+      "name": "机器人5"
+    }
+  ]
+}
