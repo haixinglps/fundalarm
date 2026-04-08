@@ -558,7 +558,7 @@
         minpricepercent = #{record.minpricepercent,jdbcType=DECIMAL},
       </if>
        
-        fene =null,
+        fene =fene-#{record.fene,jdbcType=DECIMAL},
        
       <if test="record.money != null">
         money = #{record.money,jdbcType=DECIMAL},

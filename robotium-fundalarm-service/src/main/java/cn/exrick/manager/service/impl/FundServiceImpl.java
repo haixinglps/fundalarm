@@ -296,7 +296,7 @@ public class FundServiceImpl implements FundService {
 				int level = fundItem.getLevel().intValue() - 1;
 				Fund1Gaoduanzhuangbei2Ok funditemNext = getInfoByTableNameAndLevel(tableName, level);
 				if (funditemNext == null) {
-					return;
+//					return;
 				}
 				Integer historytag = Integer.valueOf(1);
 				String pk = fundindex.getCode();
@@ -306,56 +306,13 @@ public class FundServiceImpl implements FundService {
 				} catch (Exception localException1) {
 				}
 				long dtHistory = System.currentTimeMillis();
-				for (int lv = 1; lv <= lianxuCount; lv++) {
-					Fund1Gaoduanzhuangbei2Ok funditemLast = getInfoByTableNameAndLevel(tableName,
-							fundItem.getLevel().intValue() + lv);
 
-					Fund1Gaoduanzhuangbei2Ok funditemRealLast = getInfoByTableNameAndDt(tableName, dtHistory,
-							fundItem.getLevel().intValue());
-					if ((funditemRealLast != null) && (funditemLast != null)) {
-						if (funditemRealLast.getId().intValue() != funditemLast.getId().intValue()) {
-							historytag = Integer.valueOf(0);
-							SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-							String dt = sdf.format(new Date());
-							String dtReal = sdf.format(funditemRealLast.getDt());
-							String dtLast = sdf.format(funditemLast.getDt());
-
-							FileUtil.appendUtf8String(
-									dt + "【做多分析不符合】：" + "  level:" + fundItem.getLevel() + "   最近的日期的level:"
-											+ funditemRealLast.getLevel() + "  最近日期的时间：" + dtReal + "  上层level："
-											+ funditemLast.getLevel() + "  上层时间:" + dtLast + "\n----\n",
-									"d:\\历史数据分析.txt");
-
-							break;
-						}
-						SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-						String dt = sdf.format(new Date());
-						String dtReal = sdf.format(funditemRealLast.getDt());
-						String dtLast = sdf.format(funditemLast.getDt());
-
-						FileUtil.appendUtf8String(
-								dt + "【做多分析符合】：" + "  level:" + fundItem.getLevel() + "  level-time: " + dtHistory
-										+ "   最近的日期的level:" + funditemRealLast.getLevel() + "  最近日期的时间：" + dtReal
-										+ "  上层level：" + funditemLast.getLevel() + "  上层时间:" + dtLast + "\n----\n",
-								"d:\\历史数据分析.txt");
-					}
-					dtHistory = funditemLast.getDt().getTime();
-				}
 				SimpleDateFormat sdfs = new SimpleDateFormat("yyyyMMddHHmm");
-				String signalString = pk + "_historytag_long_" + sdfs.format(new Date()) + "=" + historytag + "\n";
-				signalString = signalString + pk + "_buytag_long_" + sdfs.format(new Date()) + "="
-						+ fundItem.getBuytag() + "\n";
-				if ((historytag.intValue() == 1) && (fundItem.getBuytag() == 1)) {
-					try {
-						FileUtil.appendUtf8String(signalString, "D:\\signal.property");
-					} catch (Exception e) {
-						e.printStackTrace();
-						log.info("写入日志异常");
-					}
-				}
+
 				// T交易不移动iscurrent指针
-					if (fundItem.getName().indexOf("_bs") == -1) {
-					if ((funditemNext.getFene() != null) && (funditemNext.getFene().compareTo(new BigDecimal("0")) > 0)) {
+
+				if (funditemNext != null && (funditemNext.getFene() != null)
+						&& (funditemNext.getFene().compareTo(new BigDecimal("0")) > 0)) {
 					Fund1Gaoduanzhuangbei2OkExample example3 = new Fund1Gaoduanzhuangbei2OkExample();
 					example3.createCriteria().andLevelEqualTo(Integer.valueOf(level));
 					example3.setTableName(tableName);
@@ -365,120 +322,25 @@ public class FundServiceImpl implements FundService {
 //					record3.setZhiying(new BigDecimal("0"));
 					this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record3, example3);
 				} else {
-					Fund1Gaoduanzhuangbei2OkExample example3 = new Fund1Gaoduanzhuangbei2OkExample();
-					example3.createCriteria().andLevelEqualTo(Integer.valueOf(level));
-					example3.setTableName(tableName);
-					Fund1Gaoduanzhuangbei2Ok record3 = new Fund1Gaoduanzhuangbei2Ok();
+					if (funditemNext != null) {
+						Fund1Gaoduanzhuangbei2OkExample example3 = new Fund1Gaoduanzhuangbei2OkExample();
+						example3.createCriteria().andLevelEqualTo(Integer.valueOf(level));
+						example3.setTableName(tableName);
+						Fund1Gaoduanzhuangbei2Ok record3 = new Fund1Gaoduanzhuangbei2Ok();
 
-					record3.setIscurrent(Integer.valueOf(1));
-					record3.setBuypriceReal(funditemNext.getBuyprice());
-					record3.setZhiying(new BigDecimal("0"));
-					this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record3, example3);
-					}
-
-					BigDecimal yuzhi = new BigDecimal("5");
-					BigDecimal yuzhiFanxiang = new BigDecimal("-5");
-					if (fundindex.getZhenfureal() != null) {
-						yuzhi = fundindex.getZhenfureal();
-						yuzhiFanxiang = new BigDecimal("0").subtract(yuzhi);
-					}
-
-					int jianju = 0;
-					if (fundindex.getZhenfureal() != null) {
-						jianju = fundindex.getZhenfureal().intValue();
-					}
-					if ((dxzzlShichang.compareTo(new BigDecimal("0")) > 0) && (dxzzlShichang.compareTo(yuzhi) < 0)) {
-						jcTag = 0;
+						record3.setIscurrent(Integer.valueOf(1));
+						record3.setBuypriceReal(funditemNext.getBuyprice());
+						record3.setZhiying(new BigDecimal("0"));
+						this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record3, example3);
 					}
 
 					List<Fund1Gaoduanzhuangbei2Ok> cangweis = getCangweisByTableName(tableName);
-					int lastindex = cangweis.size() - 1;
-					for (int m = 0; m < cangweis.size(); m++) {
-						Fund1Gaoduanzhuangbei2Ok item = cangweis.get(m);
-						if (item.getLevel() <= fundItem.getLevel()) {
 
-							lastindex = m;
-						}
-					}
-					int nextindex = -1;
-					for (int m = 0; m < cangweis.size(); m++) {
-						Fund1Gaoduanzhuangbei2Ok item = cangweis.get(m);
-						if (item.getLevel() >= fundItem.getLevel()) {
-
-							nextindex = m;
-							break;
-						}
-					}
-					if ((cangweis.size() > 0)
-							&& (cangweis.get(0).getLevel().intValue() < fundItem.getLevel().intValue())) {
-						cwTag = Integer.valueOf(0);
-					}
-					int bwtag = 0;
-					int bwtag2 = 0;
-					if (cangweis.size() > 0) {
-						BigDecimal chajuht = price.subtract(cangweis.get(lastindex).getBuypriceReal());
-
-						BigDecimal dxzzlht = new BigDecimal("0");
-
-						dxzzlht = chajuht.divide(cangweis.get(0).getBuypriceReal(), 5, RoundingMode.DOWN)
-								.multiply(new BigDecimal("100"));
-						if (dxzzlht.compareTo(yuzhiFanxiang) < 0) {
-							bwtag = 1;
-						}
-						if (nextindex == -1)
-							bwtag2 = 1;
-						else {
-
-							BigDecimal chajuht2 = price.subtract(cangweis.get(nextindex).getBuypriceReal());
-
-							BigDecimal dxzzlht2 = new BigDecimal("0");
-
-							dxzzlht2 = chajuht2.divide(cangweis.get(0).getBuypriceReal(), 5, RoundingMode.DOWN)
-									.multiply(new BigDecimal("100"));
-							if (dxzzlht2.compareTo(yuzhi) > 0) {
-								bwtag2 = 1;
-							}
-						}
-					}
 					// T交易不移动iscurrent指针
-					if (((funditemNext.getName().indexOf("up") != -1) && (funditemNext.getName().indexOf("ab") != -1)
-							&& (funditemNext.getName().indexOf("sar") != -1) && (cwTag == 1)
-							&& (historytag.intValue() == 1) && (jcTag == 1))
-							|| ((funditemNext.getName().indexOf("up") != -1)
-									&& (funditemNext.getName().indexOf("ab") != -1)
-									&& (funditemNext.getName().indexOf("sar") != -1) && (cwTag == 0)
-									&& (historytag.intValue() == 1) && (bwtag == 1) && (bwtag2 == 1))
-							|| ((funditemNext.getName().indexOf("up") == -1)
-									&& (funditemNext.getName().indexOf("ab") != -1) && (tag != 8))
-							|| (tag == 2 && fundItem.getName().indexOf("_bs") != -1) // T交易开仓买入（通过_bs标记区分）
-							|| (
+					if ((tag == 2 && fundItem.getName().indexOf("_bs") != -1) // T交易开仓买入（通过_bs标记区分）
+							|| (tag == 8)) {
 
-							(funditemNext.getName().indexOf("up") == -1) && (funditemNext.getName().indexOf("ab") != -1)
-									&& (tag == 8) && (historytag.intValue() == 1))) {
-							
-							// 【RSI判断】触及maxP后在level-1买入前检查RSI，避免超买追高
-							String instIdForRSI = fundItem.getCode();
-							BigDecimal rsiValue = null;
-							try {
-								String rsiStr = jedisClient.get("rsi:" + instIdForRSI);
-								if (rsiStr != null && !rsiStr.isEmpty()) {
-									rsiValue = new BigDecimal(rsiStr);
-								}
-							} catch (Exception e) {
-								System.err.println("【Service RSI获取失败】" + instIdForRSI + ": " + e.getMessage());
-							}
-							
-							// RSI>70：超买，跳过买入（但指针已移动）
-							if (rsiValue != null && rsiValue.compareTo(new BigDecimal("70")) > 0) {
-								System.out.println("【Service建仓阻止】" + instIdForRSI + " RSI=" + rsiValue + " 超买，level-" + level + " 跳过买入");
-								// 不执行买入，但iscurrent指针已移动，等待RSI回落或价格继续下跌
-							} else {
-								// RSI正常或获取失败，执行买入
-								if (rsiValue != null) {
-									System.out.println("【Service建仓确认】" + instIdForRSI + " RSI=" + rsiValue + " 正常，level-" + level + " 执行买入");
-								}
-								
-								this.alarmPlayer.playAlarm(1);
+//					this.alarmPlayer.playAlarm(1);
 
 						String instId = fundItem.getCode();
 						String tdMode = "cash";
@@ -627,7 +489,7 @@ public class FundServiceImpl implements FundService {
 								record5.setBuypriceReal(dpBigDecimal);
 								record5.setZhiying(new BigDecimal("0"));
 								record5.setFene(realfene);
-								
+
 								// 【双向持仓】保存posId到firsttime字段
 								try {
 									String posId = ol.getJSONObject(0).getStr("posId");
@@ -638,7 +500,7 @@ public class FundServiceImpl implements FundService {
 								} catch (Exception e) {
 									System.err.println("【追涨买入】提取posId失败: " + e.getMessage());
 								}
-								
+
 								this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record5, example5);
 								String buylog = pk + "_buyprice_long_" + sdfs.format(new Date()) + "=" + dpBigDecimal
 										+ "\n";
@@ -649,49 +511,17 @@ public class FundServiceImpl implements FundService {
 									log.info("写入日志异常");
 								}
 							} else {
-//									try {
-//										FileUtil.appendUtf8String(dt + "【追涨】买入后获取订单异常：" + " level:" + level + " "
-//												+ orderInfo + "\n" + keyString + "\n----\n", "d:\\orderInfoError.txt");
-//									} catch (Exception e) {
-//										e.printStackTrace();
-//										log.info("写入日志异常");
-//									}
-//									throw new XmallException("OKX服务异常:" + requestData.toString());
 
 								throw new XmallException("return【追涨】买入后获取订单异常");
 
 							}
-//							} catch (Exception e2) {
-//								try {
-//									FileUtil.appendUtf8String(dt + "【追涨】买入后获取订单异常：" + " level:" + level + " "
-//											+ keyString + "\n" + e2.getMessage() + "\n----\n", "d:\\netError.txt");
-//								} catch (Exception e3) {
-//									e3.printStackTrace();
-//									log.info("写入日志异常");
-//								}
-//							}
-//							} else {
-//								try {
-//									try {
-//										FileUtil.appendUtf8String(
-//												dt + "【追涨】买入异常：" + " level:" + level + "请求数据： " + requestData + "\n"
-//														+ okxtransJsonObject.toString() + "\n----\n",
-//												"d:\\okxError.txt");
-//									} catch (Exception e3) {
-//										e3.printStackTrace();
-//										log.info("写入日志异常");
-//									}
-//									System.out.println("响应：" + okxtransJsonObject.toString());
-//								} catch (Exception localException2) {
-//								}
-//								throw new XmallException("OKX服务异常:" + okxtransJsonObject.getStr("msg"));
-//							}
+
 						}
+
 					}
 				}
-				}
 				if ((fundItem.getFene() != null) && (fundItem.getFene().compareTo(new BigDecimal("0")) > 0)) {
-					if (fundItem.getName().indexOf("_bs") == -1) {
+					if (fundItem.getName().indexOf("_bs") == -1 || tag != 3) {
 						Fund1Gaoduanzhuangbei2Ok record2 = new Fund1Gaoduanzhuangbei2Ok();
 
 						record2.setIscurrent(Integer.valueOf(0));
@@ -906,10 +736,10 @@ public class FundServiceImpl implements FundService {
 
 					this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record3, example3);
 					if (tag == 1) {// &&
-																														// (tag
-																														// ==
-																														// 4)
-						this.alarmPlayer.playAlarm(1);
+									// (tag
+									// ==
+									// 4)
+//						this.alarmPlayer.playAlarm(1);
 
 						String instId = fundItem.getCode() + "";
 						String tdMode = "cash";
@@ -1048,7 +878,7 @@ public class FundServiceImpl implements FundService {
 							record4.setBuypriceReal(dpBigDecimal);
 							record4.setFene(realfene);
 							record4.setZhiying(new BigDecimal("0"));
-							
+
 							// 【双向持仓】保存posId到firsttime字段
 							try {
 								String posId = ol.getJSONObject(0).getStr("posId");
@@ -1059,7 +889,7 @@ public class FundServiceImpl implements FundService {
 							} catch (Exception e) {
 								System.err.println("【补仓买入】提取posId失败: " + e.getMessage());
 							}
-							
+
 							this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record4, example4);
 							try {
 								FileUtil.appendUtf8String(
@@ -1117,7 +947,7 @@ public class FundServiceImpl implements FundService {
 		cwLocal.setYangbencount(cw.getYangbencount());
 		cwLocal.setZhiying(cw.getZhiying());
 		cwLocal.setUpcount(cw.getUpcount());
-		cwLocal.setFene(cw.getFene());  // 添加fene字段复制
+		cwLocal.setFene(cw.getFene()); // 添加fene字段复制
 		Fund1Gaoduanzhuangbei2OkExample example = new Fund1Gaoduanzhuangbei2OkExample();
 		example.createCriteria().andIdEqualTo(cw.getId());
 		example.setTableName(tableName);
@@ -1136,152 +966,154 @@ public class FundServiceImpl implements FundService {
 			String ordType = "market";
 
 			BigDecimal szBigDecimal = cw.getFene();
-			
-				// ====== 全平场景：使用OKX一键平仓接口（不依赖数据库fene） ======
-				if (cw.getComment().indexOf("全平") != -1) {
-					String closeAllKey = "closeall:done:" + instId;
-					String closeAllFailKey = "closeall:fail:" + instId;
-					String closeAllResultKey = "closeall:result:" + instId; // 存储结果供外层查询
-					
-					SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-					String dt = sdf.format(new Date());
-					
-					// 【事务内】清空所有有持仓的底仓档位（fene>0 的才需要清空）
-					int clearedCount = 0;
-					for (Fund1Gaoduanzhuangbei2Ok position : duichongList) {
-						// 只处理有持仓的档位（fene > 0）
-						if (position.getFene() == null || position.getFene().compareTo(BigDecimal.ZERO) <= 0) {
-							continue; // 跳过已空仓的档位
-						}
-						
-						Fund1Gaoduanzhuangbei2OkExample posExample = new Fund1Gaoduanzhuangbei2OkExample();
-						posExample.createCriteria().andIdEqualTo(position.getId());
-						posExample.setTableName(tableName);
-						
-						Fund1Gaoduanzhuangbei2Ok posUpdate = new Fund1Gaoduanzhuangbei2Ok();
-						// 【清空fene】设置为0表示无持仓
-						posUpdate.setFene(BigDecimal.ZERO);
-						posUpdate.setZhiying(BigDecimal.ZERO);
-						posUpdate.setComment(position.getId().equals(cw.getId()) ? "全平平仓：OKX一键全平" : "全平清仓：同批次已平");
-						posUpdate.setMaxprice5(BigDecimal.ZERO);
-						posUpdate.setMinprice5(BigDecimal.ZERO);
-						posUpdate.setMaxpriceniu(BigDecimal.ZERO);
-						posUpdate.setMaxzhangfu5(BigDecimal.ZERO);
-						posUpdate.setMaxdiefu5(BigDecimal.ZERO);
-						
-						this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(posUpdate, posExample);
-						clearedCount++;
-						System.out.println("【全平事务】清空档位 " + position.getLevel() + " fene=" + position.getFene() + " -> 0");
+
+			// ====== 全平场景：使用OKX一键平仓接口（不依赖数据库fene） ======
+			if (cw.getComment().indexOf("全平") != -1) {
+				String closeAllKey = "closeall:done:" + instId;
+				String closeAllFailKey = "closeall:fail:" + instId;
+				String closeAllResultKey = "closeall:result:" + instId; // 存储结果供外层查询
+
+				SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				String dt = sdf.format(new Date());
+
+				// 【事务内】清空所有有持仓的底仓档位（fene>0 的才需要清空）
+				int clearedCount = 0;
+				for (Fund1Gaoduanzhuangbei2Ok position : duichongList) {
+					// 只处理有持仓的档位（fene > 0）
+					if (position.getFene() == null || position.getFene().compareTo(BigDecimal.ZERO) <= 0) {
+						continue; // 跳过已空仓的档位
 					}
-					System.out.println("【全平事务】共清空 " + clearedCount + "/" + duichongList.size() + " 个档位的fene");
-					System.out.println("【全平事务】所有档位fene清空完成");
-					
-					// 检查是否已成功全平
-					if (jedisClient.exists(closeAllKey)) {
-						System.out.println("【全平跳过】已处理，档位=" + cw.getLevel());
-						return;
-					}
-					
-					// 检查是否已连续失败3次
-					String failCountStr = jedisClient.get(closeAllFailKey);
-					int failCount = failCountStr == null ? 0 : Integer.parseInt(failCountStr);
-					if (failCount >= 3) {
-						String alarmMsg = dt + "【全平告警】" + instId + " 已连续失败3次，请手动检查仓位！";
-						System.err.println(alarmMsg);
-						// 记录到文件
-						try {
-							FileUtil.appendUtf8String(alarmMsg + "\n", "d:\\okxError.txt");
-						} catch (Exception e) {
-							e.printStackTrace();
-						}
-						// 存储结果到Redis供外层查询
-						jedisClient.setex(closeAllResultKey, 300, "ALARM:连续失败3次");
-						return;
-					}
-					
-					// 调用OKX一键平仓接口（带重试）
-					String closeResult = null;
-					boolean success = false;
-					String errorMsg = "";
-					int restag = 0; // 0-失败, 1-成功
-					
-					for (int retry = 0; retry < 3 && !success; retry++) {
-						try {
-							if (retry > 0) {
-								System.out.println("【全平重试】第" + retry + "次尝试...");
-								Thread.sleep(1000);
-							}
-							
-							JSONObject closeParams = new JSONObject();
-							closeParams.put("instId", instId);
-							closeParams.put("mgnMode", tdMode);
-							closeParams.put("posSide", "long");
-							
-							closeResult = this.okxService.trade("/api/v5/trade/close-position", "POST", closeParams.toString());
-							System.out.println("【OKX全平】尝试" + (retry + 1) + "结果：" + closeResult);
-							
-							// 使用JSONUtil解析返回码（项目标准方式）
-							if (closeResult != null) {
-								JSONObject resultJson = JSONUtil.parseObj(closeResult);
-								String code = resultJson.getStr("code");
-								if ("0".equals(code)) {
-									success = true;
-									restag = 1;
-								} else {
-									errorMsg = "code=" + code + ",msg=" + resultJson.getStr("msg");
-								}
-							} else {
-								errorMsg = "返回null";
-							}
-						} catch (Exception e) {
-							errorMsg = e.getMessage();
-							System.err.println("【全平异常】尝试" + (retry + 1) + "失败：" + errorMsg);
-							// 记录到文件
-							try {
-								FileUtil.appendUtf8String(dt + "【全平异常】尝试" + (retry + 1) + "失败：" + errorMsg 
-										+ "  instId:" + instId + "\n", "d:\\okxError.txt");
-							} catch (Exception ex) {
-								ex.printStackTrace();
-							}
-						}
-					}
-					
-					if (success) {
-						// 查询订单状态确认（项目标准做法）
-						String checkKey = "?instId=" + instId;
-						String positionInfo = this.okxService.trade("/api/v5/account/positions" + checkKey, "GET", "");
-						System.out.println("【全平确认】仓位查询：" + positionInfo);
-						
-						jedisClient.setex(closeAllKey, 60, "1");
-						jedisClient.del(closeAllFailKey);
-						jedisClient.del("t:global:order");
-						// 存储成功结果供外层查询
-						jedisClient.setex(closeAllResultKey, 60, "SUCCESS:" + closeResult);
-						System.out.println("【全平成功】" + instId + " 仓位已全部平仓");
-					} else {
-						int newFailCount = failCount + 1;
-						jedisClient.setex(closeAllFailKey, 300, String.valueOf(newFailCount));
-						// 存储失败结果供外层查询
-						jedisClient.setex(closeAllResultKey, 300, "FAIL:" + errorMsg);
-						
-						String failMsg = dt + "【全平失败】" + instId + " 失败次数=" + newFailCount + "/3，错误：" + errorMsg;
-						System.err.println(failMsg);
-						
-						// 记录到文件
-						try {
-							FileUtil.appendUtf8String(failMsg + "\n", "d:\\okxError.txt");
-						} catch (Exception e) {
-							e.printStackTrace();
-						}
-						
-						// 如果连续失败3次，抛出异常（项目标准做法）
-						if (newFailCount >= 3) {
-							throw new XmallException("全平失败3次，请手动检查仓位：" + instId);
-						}
-					}
-					
+
+					Fund1Gaoduanzhuangbei2OkExample posExample = new Fund1Gaoduanzhuangbei2OkExample();
+					posExample.createCriteria().andIdEqualTo(position.getId());
+					posExample.setTableName(tableName);
+
+					Fund1Gaoduanzhuangbei2Ok posUpdate = new Fund1Gaoduanzhuangbei2Ok();
+					// 【清空fene】设置为0表示无持仓
+					posUpdate.setFene(BigDecimal.ZERO);
+					posUpdate.setZhiying(BigDecimal.ZERO);
+					posUpdate.setComment(position.getId().equals(cw.getId()) ? "全平平仓：OKX一键全平" : "全平清仓：同批次已平");
+					posUpdate.setMaxprice5(BigDecimal.ZERO);
+					posUpdate.setMinprice5(BigDecimal.ZERO);
+					posUpdate.setMaxpriceniu(BigDecimal.ZERO);
+					posUpdate.setMaxzhangfu5(BigDecimal.ZERO);
+					posUpdate.setMaxdiefu5(BigDecimal.ZERO);
+
+					this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(posUpdate, posExample);
+					clearedCount++;
+					System.out.println("【全平事务】清空档位 " + position.getLevel() + " fene=" + position.getFene() + " -> 0");
+				}
+				System.out.println("【全平事务】共清空 " + clearedCount + "/" + duichongList.size() + " 个档位的fene");
+				System.out.println("【全平事务】所有档位fene清空完成");
+
+				// 检查是否已成功全平
+				if (jedisClient.exists(closeAllKey)) {
+					System.out.println("【全平跳过】已处理，档位=" + cw.getLevel());
 					return;
 				}
+
+				// 检查是否已连续失败3次
+				String failCountStr = jedisClient.get(closeAllFailKey);
+				int failCount = failCountStr == null ? 0 : Integer.parseInt(failCountStr);
+				if (failCount >= 3) {
+					String alarmMsg = dt + "【全平告警】" + instId + " 已连续失败3次，请手动检查仓位！";
+					System.err.println(alarmMsg);
+					// 记录到文件
+					try {
+						FileUtil.appendUtf8String(alarmMsg + "\n", "d:\\okxError.txt");
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+					// 存储结果到Redis供外层查询
+					jedisClient.setex(closeAllResultKey, 300, "ALARM:连续失败3次");
+					return;
+				}
+
+				// 调用OKX一键平仓接口（带重试）
+				String closeResult = null;
+				boolean success = false;
+				String errorMsg = "";
+				int restag = 0; // 0-失败, 1-成功
+
+				for (int retry = 0; retry < 3 && !success; retry++) {
+					try {
+						if (retry > 0) {
+							System.out.println("【全平重试】第" + retry + "次尝试...");
+							Thread.sleep(1000);
+						}
+
+						JSONObject closeParams = new JSONObject();
+						closeParams.put("instId", instId);
+						closeParams.put("mgnMode", tdMode);
+						closeParams.put("posSide", "long");
+
+						closeResult = this.okxService.trade("/api/v5/trade/close-position", "POST",
+								closeParams.toString());
+						System.out.println("【OKX全平】尝试" + (retry + 1) + "结果：" + closeResult);
+
+						// 使用JSONUtil解析返回码（项目标准方式）
+						if (closeResult != null) {
+							JSONObject resultJson = JSONUtil.parseObj(closeResult);
+							String code = resultJson.getStr("code");
+							if ("0".equals(code)) {
+								success = true;
+								restag = 1;
+							} else {
+								errorMsg = "code=" + code + ",msg=" + resultJson.getStr("msg");
+							}
+						} else {
+							errorMsg = "返回null";
+						}
+					} catch (Exception e) {
+						errorMsg = e.getMessage();
+						System.err.println("【全平异常】尝试" + (retry + 1) + "失败：" + errorMsg);
+						// 记录到文件
+						try {
+							FileUtil.appendUtf8String(
+									dt + "【全平异常】尝试" + (retry + 1) + "失败：" + errorMsg + "  instId:" + instId + "\n",
+									"d:\\okxError.txt");
+						} catch (Exception ex) {
+							ex.printStackTrace();
+						}
+					}
+				}
+
+				if (success) {
+					// 查询订单状态确认（项目标准做法）
+					String checkKey = "?instId=" + instId;
+					String positionInfo = this.okxService.trade("/api/v5/account/positions" + checkKey, "GET", "");
+					System.out.println("【全平确认】仓位查询：" + positionInfo);
+
+					jedisClient.setex(closeAllKey, 60, "1");
+					jedisClient.del(closeAllFailKey);
+					jedisClient.del("t:global:order");
+					// 存储成功结果供外层查询
+					jedisClient.setex(closeAllResultKey, 60, "SUCCESS:" + closeResult);
+					System.out.println("【全平成功】" + instId + " 仓位已全部平仓");
+				} else {
+					int newFailCount = failCount + 1;
+					jedisClient.setex(closeAllFailKey, 300, String.valueOf(newFailCount));
+					// 存储失败结果供外层查询
+					jedisClient.setex(closeAllResultKey, 300, "FAIL:" + errorMsg);
+
+					String failMsg = dt + "【全平失败】" + instId + " 失败次数=" + newFailCount + "/3，错误：" + errorMsg;
+					System.err.println(failMsg);
+
+					// 记录到文件
+					try {
+						FileUtil.appendUtf8String(failMsg + "\n", "d:\\okxError.txt");
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+
+					// 如果连续失败3次，抛出异常（项目标准做法）
+					if (newFailCount >= 3) {
+						throw new XmallException("全平失败3次，请手动检查仓位：" + instId);
+					}
+				}
+
+				return;
+			}
 			// ====== 对冲场景：累加fene ======
 			else if (cw.getComment().indexOf("对冲") != -1) {
 				BigDecimal dcSum = new BigDecimal("0");
@@ -1340,7 +1172,7 @@ public class FundServiceImpl implements FundService {
 			requestData.put("clOrdId", clOrdId);
 
 			requestData.put("side", side);
-			
+
 			// 【双向持仓】读取posId并指定平仓（避免FIFO）
 			String posId = cw.getFirsttime();
 			if (posId != null && !posId.isEmpty() && !"null".equals(posId)) {
