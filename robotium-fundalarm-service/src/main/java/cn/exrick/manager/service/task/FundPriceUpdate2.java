@@ -1257,18 +1257,18 @@ public class FundPriceUpdate2 {
 							// 3. 检查是否可以开仓（传入fund.money作为张数）
 							// 【修改】T仓位买入量：DOGE=0.02张，XAUT=2张（与底仓区分）
 							BigDecimal zhang;
-							if (fund.getMoney() != null && fund.getMoney().compareTo(BigDecimal.ZERO) > 0) {
-								zhang = fund.getMoney();
+//							if (fund.getMoney() != null && fund.getMoney().compareTo(BigDecimal.ZERO) > 0) {
+//								zhang = fund.getMoney();
+//							} else {
+							// 默认T仓位买入量（与底仓不同）
+							if (fund.getCode().contains("DOGE")) {
+								zhang = new BigDecimal("0.02"); // DOGE每次0.02张
+							} else if (fund.getCode().contains("XAU")) {
+								zhang = new BigDecimal("2"); // XAUT每次2张
 							} else {
-								// 默认T仓位买入量（与底仓不同）
-								if (fund.getCode().contains("DOGE")) {
-									zhang = new BigDecimal("0.02"); // DOGE每次0.02张
-								} else if (fund.getCode().contains("XAUT")) {
-									zhang = new BigDecimal("2"); // XAUT每次2张
-								} else {
-									zhang = new BigDecimal("0.05"); // 其他默认0.05张
-								}
+								zhang = new BigDecimal("0.05"); // 其他默认0.05张
 							}
+//							}
 
 							DailyProfitTManager.CanTradeResult canTrade = dailyProfitTManager.canOpen(fund.getCode(),
 									jingzhi, zhang, atrPercent);
@@ -1286,7 +1286,7 @@ public class FundPriceUpdate2 {
 									cwTemp.setLevel(uniqueLevel);
 									cwTemp.setCode(fund.getCode());
 									cwTemp.setName(fund.getName() + "_bs"); // 加bs标记，避免被拦截
-									cwTemp.setFene(canTrade.zhang);
+									cwTemp.setFene(canTrade.zhang.multiply(fund.getHuiche()));
 									cwTemp.setBuypriceReal(jingzhi);
 									cwTemp.setBuyprice(jingzhi);
 									cwTemp.setCurrentprice(jingzhi);
@@ -1298,12 +1298,15 @@ public class FundPriceUpdate2 {
 									cwTemp.setZhiying(BigDecimal.ZERO);
 
 									// 2. 调用底仓接口下单（alarmtag=2表示买入）
-									caiService.updateCurrentPrice(tableName, jingzhi, 2, jingzhi, canTrade.zhang, fund,
-											cwTemp, lastvalue);
+									int re = caiService.updateCurrentPrice(tableName, jingzhi, 2, jingzhi,
+											canTrade.zhang, fund, cwTemp, lastvalue);
+									if (re == 1) {
 
-									orderSuccess = true;
-									System.out.println("【T开仓-下单成功】" + posId + " " + canTrade.zhang + "张 @" + jingzhi);
+										orderSuccess = true;
+										System.out
+												.println("【T开仓-下单成功】" + posId + " " + canTrade.zhang + "张 @" + jingzhi);
 
+									}
 								} catch (Exception e) {
 									System.err.println("【T开仓-下单失败】" + e.getMessage());
 									e.printStackTrace();
@@ -1322,16 +1325,16 @@ public class FundPriceUpdate2 {
 										jedisClient.setex(posKey + ":zhang", 86400, canTrade.zhang.toString());
 
 										// 【双向持仓】查询并保存OKX posId
-										try {
-											// 使用下单时的clOrdId查询订单获取posId
-											String okxPosId = queryOkxPosId(fund.getCode(), posId);
-											if (okxPosId != null) {
-												jedisClient.setex(posKey + ":okxPosId", 86400, okxPosId);
-												System.out.println("【T开仓】保存OKX posId: " + okxPosId);
-											}
-										} catch (Exception e) {
-											System.err.println("【T开仓】查询posId失败: " + e.getMessage());
-										}
+//										try {
+//											// 使用下单时的clOrdId查询订单获取posId
+//											String okxPosId = queryOkxPosId(fund.getCode(), posId);
+//											if (okxPosId != null) {
+//												jedisClient.setex(posKey + ":okxPosId", 86400, okxPosId);
+//												System.out.println("【T开仓】保存OKX posId: " + okxPosId);
+//											}
+//										} catch (Exception e) {
+//											System.err.println("【T开仓】查询posId失败: " + e.getMessage());
+//										}
 									}
 								} else {
 									System.out.println("【T开仓】因下单失败，不记录Redis仓位");
@@ -1367,7 +1370,7 @@ public class FundPriceUpdate2 {
 									cwTemp2.setLevel(uniqueLevel2);
 									cwTemp2.setCode(fund.getCode());
 									cwTemp2.setName(fund.getName() + "_bs"); // 加bs标记，避免被拦截
-									cwTemp2.setFene(closeZhang);
+									cwTemp2.setFene(closeZhang.multiply(fund.getHuiche()));
 									cwTemp2.setBuypriceReal(signal.price);
 									cwTemp2.setBuyprice(signal.price);
 									cwTemp2.setCurrentprice(signal.price);
@@ -1378,23 +1381,23 @@ public class FundPriceUpdate2 {
 									cwTemp2.setWangge(BigDecimal.ZERO);
 									cwTemp2.setZhiying(BigDecimal.ZERO);
 
-									// 2. 获取保存的posId（双向持仓需要）
-									String closePosId = jedisClient.get(posKey2 + ":okxPosId");
-									String lastValueWithPosId = "T" + signal.positionId;
-									if (closePosId != null && !closePosId.isEmpty()) {
-										lastValueWithPosId = "T" + signal.positionId + ":" + closePosId;
-										cwTemp2.setFirsttime(closePosId); // 【关键】设置posId到firsttime字段，供卖出时使用
-										System.out.println("【T平仓】使用posId: " + closePosId);
-									}
+//									// 2. 获取保存的posId（双向持仓需要）
+//									String closePosId = jedisClient.get(posKey2 + ":okxPosId");
+//									String lastValueWithPosId = "T" + signal.positionId;
+//									if (closePosId != null && !closePosId.isEmpty()) {
+//										lastValueWithPosId = "T" + signal.positionId + ":" + closePosId;
+//										cwTemp2.setFirsttime(closePosId); // 【关键】设置posId到firsttime字段，供卖出时使用
+//										System.out.println("【T平仓】使用posId: " + closePosId);
+//									}
 
 									// 调用底仓接口下单（alarmtag=3表示卖出）
-									caiService.updateCurrentPrice(tableName, signal.price, 3, signal.price, closeZhang,
-											fund, cwTemp2, lastvalue);
-
-									closeSuccess = true;
-									System.out.println(
-											"【T平仓-下单成功】" + signal.positionId + " " + closeZhang + "张 @" + signal.price);
-
+									int re = caiService.updateCurrentPrice(tableName, signal.price, 3, signal.price,
+											closeZhang, fund, cwTemp2, lastvalue);
+									if (re == 1) {
+										closeSuccess = true;
+										System.out.println("【T平仓-下单成功】" + signal.positionId + " " + closeZhang + "张 @"
+												+ signal.price);
+									}
 								} catch (Exception e) {
 									System.err.println("【T平仓-下单失败】" + signal.positionId + "：" + e.getMessage());
 									e.printStackTrace();

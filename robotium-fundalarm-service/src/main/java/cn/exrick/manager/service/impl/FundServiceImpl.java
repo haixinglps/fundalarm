@@ -224,7 +224,7 @@ public class FundServiceImpl implements FundService {
 
 	@Override
 	@Transactional(rollbackFor = { Exception.class })
-	public void updateCurrentPrice(String tableName, BigDecimal price, int tag, BigDecimal realbuyprice,
+	public Integer updateCurrentPrice(String tableName, BigDecimal price, int tag, BigDecimal realbuyprice,
 			BigDecimal money, Fund fundindex, Fund1Gaoduanzhuangbei2Ok fundItem, String lastvalue) {
 		Fund1Gaoduanzhuangbei2OkExample exampleOri = new Fund1Gaoduanzhuangbei2OkExample();
 		String trans = null;
@@ -462,7 +462,8 @@ public class FundServiceImpl implements FundService {
 									e.printStackTrace();
 									log.info("写入日志异常");
 								}
-								throw new XmallException("OKX服务异常:" + requestData.toString());
+								// throw new XmallException("OKX服务异常:" + requestData.toString());
+								return 0;
 							}
 							JSONObject orderInfo = JSONUtil.parseObj(transOrder);
 							if (orderInfo.getStr("code").equals("0")) {
@@ -513,6 +514,7 @@ public class FundServiceImpl implements FundService {
 							} else {
 
 								// throw new XmallException("return【追涨】买入后获取订单异常");
+								return 0;
 
 							}
 
@@ -526,7 +528,7 @@ public class FundServiceImpl implements FundService {
 
 						record2.setIscurrent(Integer.valueOf(0));
 						this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record2, exampleOri);
-						return;
+						return 0;
 					}
 					String instId = fundItem.getCode() + "";
 					String tdMode = "cash";
@@ -645,7 +647,8 @@ public class FundServiceImpl implements FundService {
 							e.printStackTrace();
 							log.info("写入日志异常");
 						}
-						throw new XmallException("卖出后获取订单异常");
+						// throw new XmallException("卖出后获取订单异常");
+						return 0;
 					} else {
 						JSONObject orderInfo = JSONUtil.parseObj(transOrder);
 						if (orderInfo.getStr("code").equals("0")) {
@@ -683,7 +686,8 @@ public class FundServiceImpl implements FundService {
 //								e.printStackTrace();
 //								log.info("写入日志异常");
 //							}
-							throw new XmallException("return【as卖出】as卖出后获取订单异常");
+							// throw new XmallException("return【as卖出】as卖出后获取订单异常");
+							return 0;
 
 						}
 					}
@@ -706,7 +710,7 @@ public class FundServiceImpl implements FundService {
 				int level = fundItem.getLevel().intValue() + 1;
 				Fund1Gaoduanzhuangbei2Ok funditemNext = getInfoByTableNameAndLevel(tableName, level);
 				if (funditemNext == null) {
-					return;
+					return 0;
 				}
 				Fund1Gaoduanzhuangbei2Ok record2 = new Fund1Gaoduanzhuangbei2Ok();
 
@@ -910,6 +914,7 @@ public class FundServiceImpl implements FundService {
 //							throw new XmallException("【补仓买入后】okx订单接口异常:" + keyString);
 
 							// throw new XmallException("return【补仓买入后】okx订单接口异常:" + keyString);
+							return 0;
 
 						}
 //						} else {
@@ -930,6 +935,7 @@ public class FundServiceImpl implements FundService {
 				}
 			}
 		}
+		return 1;
 	}
 
 	@Override

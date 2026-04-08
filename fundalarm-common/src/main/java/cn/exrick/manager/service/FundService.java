@@ -36,7 +36,7 @@ public interface FundService {
 
 //	void updatezhiying(Fund1Gaoduanzhuangbei2Ok cw, String tableName);
 
-	void updateCurrentPrice(String tableName, BigDecimal price, int tag, BigDecimal realbuyprice, BigDecimal money,
+	Integer updateCurrentPrice(String tableName, BigDecimal price, int tag, BigDecimal realbuyprice, BigDecimal money,
 			Fund fundindex, Fund1Gaoduanzhuangbei2Ok fundItem, String lastvalue);
 
 	Fund1Gaoduanzhuangbei2Ok getInfoByTableNameAndLevel(String tableName, int level);
