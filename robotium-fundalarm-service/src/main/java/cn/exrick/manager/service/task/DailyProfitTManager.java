@@ -266,6 +266,10 @@ public class DailyProfitTManager {
 		public int rescueCount = 0; // 解套补仓次数
 		public String atrPercent = "0"; // 开仓时的ATR%(用于动态止盈止损)
 
+		// 【必须添加】默认构造函数
+		public TPosition() {
+		}
+
 		public TPosition(BigDecimal entryPrice, BigDecimal zhang) {
 			this.id = "T" + (System.currentTimeMillis() % 100000);
 			this.openTime = System.currentTimeMillis();
