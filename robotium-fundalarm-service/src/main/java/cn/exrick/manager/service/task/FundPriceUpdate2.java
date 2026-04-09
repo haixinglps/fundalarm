@@ -1308,7 +1308,7 @@ public class FundPriceUpdate2 {
 
 									}
 								} catch (Exception e) {
-									System.err.println("【T开仓-下单失败】" + e.getMessage());
+									System.err.println("【T开仓00000-下单失败】" + e.getMessage());
 									e.printStackTrace();
 								}
 
