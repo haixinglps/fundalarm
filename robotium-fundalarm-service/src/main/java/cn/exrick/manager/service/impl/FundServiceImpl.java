@@ -226,6 +226,7 @@ public class FundServiceImpl implements FundService {
 	@Transactional(rollbackFor = { Exception.class })
 	public Integer updateCurrentPrice(String tableName, BigDecimal price, int tag, BigDecimal realbuyprice,
 			BigDecimal money, Fund fundindex, Fund1Gaoduanzhuangbei2Ok fundItem, String lastvalue) {
+		System.out.println("=================tag:" + tag);
 		Fund1Gaoduanzhuangbei2OkExample exampleOri = new Fund1Gaoduanzhuangbei2OkExample();
 		String trans = null;
 		int jcTag = 1;
@@ -298,6 +299,8 @@ public class FundServiceImpl implements FundService {
 				if (funditemNext == null) {
 //					return;
 				}
+				System.out.println("=================level:" + level);
+
 				Integer historytag = Integer.valueOf(1);
 				String pk = fundindex.getCode();
 				int lianxuCount = 1;
@@ -455,6 +458,7 @@ public class FundServiceImpl implements FundService {
 								k++;
 								transOrder = this.okxService.trade("/api/v5/trade/order" + keyString, "GET", "");
 							}
+							System.out.println("==================" + transOrder);
 							if (transOrder == null || (transOrder != null
 									&& !JSONUtil.parseObj(transOrder).getStr("code").contentEquals("51603")
 									&& !JSONUtil.parseObj(transOrder).getStr("code").contentEquals("0"))) {
@@ -496,21 +500,22 @@ public class FundServiceImpl implements FundService {
 								record5.setFene(realfene);
 
 								// 【双向持仓】保存posId到firsttime字段
-								try {
-									String posId = ol.getJSONObject(0).getStr("posId");
-									if (posId != null && !posId.isEmpty()) {
-										record5.setFirsttime(posId);
-										System.out.println("【追涨买入】保存posId: " + posId);
-									}
-								} catch (Exception e) {
-									System.err.println("【追涨买入】提取posId失败: " + e.getMessage());
-								}
+//								try {
+//									String posId = ol.getJSONObject(0).getStr("posId");
+//									if (posId != null && !posId.isEmpty()) {
+//										record5.setFirsttime(posId);
+//										System.out.println("【追涨买入】保存posId: " + posId);
+//									}
+//								} catch (Exception e) {
+//									System.err.println("【追涨买入】提取posId失败: " + e.getMessage());
+//								}
 
 								this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record5, example5);
 								String buylog = pk + "_buyprice_long_" + sdfs.format(new Date()) + "=" + dpBigDecimal
-										+ "\n";
+										+ "\t" + (level - 1) + "->" + level + "\n";
+								System.out.println("==============" + buylog);
 								try {
-									FileUtil.appendUtf8String(buylog, "D:\\signal.property");
+									FileUtil.appendUtf8String(buylog, "buy.txt");
 								} catch (Exception e) {
 									e.printStackTrace();
 									log.info("写入日志异常");

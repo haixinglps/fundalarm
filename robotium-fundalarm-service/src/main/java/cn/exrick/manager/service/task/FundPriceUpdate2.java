@@ -75,7 +75,7 @@ public class FundPriceUpdate2 {
 	public static Map<String, String> ck = new HashMap<String, String>();
 	public static String cookieString = "";
 
-	@Scheduled(cron = "*/1 * * * * ?")
+	@Scheduled(cron = "* */1 * * * ?")
 	public void run() {
 		// 定义所有基金表名称。70个，目前6个。
 		List<String> tableNames = new ArrayList<String>();
