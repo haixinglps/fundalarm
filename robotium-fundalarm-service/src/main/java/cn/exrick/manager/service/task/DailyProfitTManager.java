@@ -721,8 +721,13 @@ public class DailyProfitTManager {
 
 			// 计算ATR自适应止盈止损（基于开仓时保存的ATR）
 			BigDecimal posAtr = new BigDecimal(pos.atrPercent);
-			BigDecimal baseTP = config.tpAmount;
-			BigDecimal baseSL = config.slAmount.abs();
+//			BigDecimal baseTP = config.tpAmount;
+//			BigDecimal baseSL = config.slAmount.abs();
+
+			// 基础值
+			BigDecimal baseTP = pos.getValue().multiply(config.tpPercent);
+			BigDecimal baseSL = pos.getValue().multiply(config.slPercent);
+
 			BigDecimal actualTP = baseTP;
 			BigDecimal actualSL = baseSL.negate();
 
