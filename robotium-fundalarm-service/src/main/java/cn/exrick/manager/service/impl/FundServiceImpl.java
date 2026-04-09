@@ -358,7 +358,7 @@ public class FundServiceImpl implements FundService {
 
 						String ordType = "market";
 
-						String sz = fundindex.getMoney().toString();
+						String sz = fundItem.getFene().divide(fundindex.getHuiche()).toString();
 
 						int bt = 1;
 						BigDecimal realfene = new BigDecimal("100");
@@ -549,8 +549,10 @@ public class FundServiceImpl implements FundService {
 
 					String ordType = "market";
 
-					String sz = "0";
-					sz = fundItem.getFene().toString();
+//					String sz = "0";
+//					sz = fundItem.getFene().toString();
+
+					String sz = fundItem.getFene().divide(fundindex.getHuiche()).toString();
 
 //					if (instId.indexOf("SWAP") != -1)
 //						sz = fundItem.getFene().divide(fundindex.getHuiche()).toString();
@@ -765,6 +767,9 @@ public class FundServiceImpl implements FundService {
 						String ordType = "market";
 
 						String sz = fundindex.getMoney().toString();// "0";
+
+//						String sz = fundItem.getFene().divide(fundindex.getHuiche()).toString();
+
 						BigDecimal realfene = fundItem.getFene();
 
 //						if (instId.indexOf("SWAP") != -1) {
