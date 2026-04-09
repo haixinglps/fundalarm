@@ -537,7 +537,7 @@ public class FundServiceImpl implements FundService {
 
 						record2.setIscurrent(Integer.valueOf(0));
 						this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record2, exampleOri);
-						return 0;
+						return 1;
 					}
 					String instId = fundItem.getCode() + "";
 					String tdMode = "cash";

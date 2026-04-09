@@ -1273,6 +1273,7 @@ public class FundPriceUpdate2 {
 							DailyProfitTManager.CanTradeResult canTrade = dailyProfitTManager.canOpen(fund.getCode(),
 									jingzhi, zhang, atrPercent);
 							if (canTrade.allowed && score.passed) {
+								System.out.println("开始下单t单");
 								// 【先下单到OKX，成功后再记录Redis】避免状态不一致
 								String posId = "T" + (System.currentTimeMillis() % 100000);
 								boolean orderSuccess = false;
@@ -1283,7 +1284,7 @@ public class FundPriceUpdate2 {
 									int tId = -1 * (posId.hashCode() % 100000);
 									cwTemp.setId(tId);
 									int uniqueLevel = 900 + (posId.hashCode() % 100);
-									cwTemp.setLevel(uniqueLevel);
+									cwTemp.setLevel(9999999);
 									cwTemp.setCode(fund.getCode());
 									cwTemp.setName(fund.getName() + "_bs"); // 加bs标记，避免被拦截
 									cwTemp.setFene(canTrade.zhang.multiply(fund.getHuiche()));
@@ -1367,7 +1368,7 @@ public class FundPriceUpdate2 {
 									int tId2 = -1 * (signal.positionId.hashCode() % 100000);
 									cwTemp2.setId(tId2);
 									int uniqueLevel2 = 900 + (signal.positionId.hashCode() % 100);
-									cwTemp2.setLevel(uniqueLevel2);
+									cwTemp2.setLevel(9999999);
 									cwTemp2.setCode(fund.getCode());
 									cwTemp2.setName(fund.getName() + "_bs"); // 加bs标记，避免被拦截
 									cwTemp2.setFene(closeZhang.multiply(fund.getHuiche()));
