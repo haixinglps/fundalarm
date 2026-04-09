@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import cn.exrick.common.jedis.JedisClient;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 
 /**
@@ -66,7 +67,7 @@ public class DailyProfitTManager {
 	static {
 		// XAUT配置（5倍，1张=4U，最低买1张）
 		// 百分比模式：止盈0.3% / 止损0.2%（盈亏比1.5:1）
-		CONTRACT_CONFIGS.put("XAUT", new ContractConfig(new BigDecimal("4"), // 1张=4U
+		CONTRACT_CONFIGS.put("XAUT", new ContractConfig(new BigDecimal("0.001"), // 1张=4U
 				new BigDecimal("5"), // 5倍杠杆
 				new BigDecimal("0.0015"), // 网格间距0.15%
 				new BigDecimal("0.003"), // 止盈0.3%
@@ -80,7 +81,7 @@ public class DailyProfitTManager {
 
 		// DOGE配置（3倍，1张=170U，最低买0.01张）
 		// 百分比模式：止盈0.45% / 止损0.3%（盈亏比1.5:1）
-		CONTRACT_CONFIGS.put("DOGE", new ContractConfig(new BigDecimal("170"), // 1张=170U（0.01张=1.7U）
+		CONTRACT_CONFIGS.put("DOGE", new ContractConfig(new BigDecimal("1000"), // 1张=170U（0.01张=1.7U）
 				new BigDecimal("3"), // 3倍杠杆
 				new BigDecimal("0.0015"), // 网格间距0.15%（与XAUT统一，ATR自适应）
 				new BigDecimal("0.0045"), // 止盈0.45%
@@ -572,7 +573,7 @@ public class DailyProfitTManager {
 		pos.atrPercent = atrPercent != null ? atrPercent.toString() : "0";
 
 		// 根据品种设置金额
-		BigDecimal positionValue = zhang.multiply(config.valuePerZhang);
+		BigDecimal positionValue = zhang.multiply(config.valuePerZhang).multiply(entryPrice);
 		pos.value = positionValue.toString();
 
 		// ===== 止盈止损计算 =====
@@ -587,7 +588,7 @@ public class DailyProfitTManager {
 
 			// ATR自适应调整：ATR主导，基础保底，3倍上限
 			if (atrPercent != null && atrPercent.compareTo(BigDecimal.ZERO) > 0) {
-				BigDecimal atrValue = atrPercent.multiply(entryPrice).multiply(positionValue);
+				BigDecimal atrValue = atrPercent.multiply(positionValue);
 				// ATR×1.5作为止盈，ATR×1.0作为止损，保持1.5:1盈亏比
 				BigDecimal atrTP = atrValue.multiply(new BigDecimal("1.5"));
 				BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.0"));
@@ -667,13 +668,16 @@ public class DailyProfitTManager {
 		}
 
 		// 止盈止损价格 = 入场价 × (1 ± 金额/价值)
-		BigDecimal tpRate = actualTP.divide(zhang.multiply(config.valuePerZhang), 6, RoundingMode.HALF_UP);
-		BigDecimal slRate = actualSL.divide(zhang.multiply(config.valuePerZhang), 6, RoundingMode.HALF_UP);
+		BigDecimal tpRate = actualTP.divide(zhang.multiply(config.valuePerZhang).multiply(entryPrice), 6,
+				RoundingMode.HALF_UP);
+		BigDecimal slRate = actualSL.divide(zhang.multiply(config.valuePerZhang).multiply(entryPrice), 6,
+				RoundingMode.HALF_UP);
 		pos.tpPrice = entryPrice.multiply(BigDecimal.ONE.add(tpRate)).setScale(8, RoundingMode.HALF_UP).toString();
 		pos.slPrice = entryPrice.multiply(BigDecimal.ONE.subtract(slRate)).setScale(8, RoundingMode.HALF_UP).toString();
 
 		System.out.println("[T-Open-ATR] " + symbol + " ATR=" + atrPercent + " TP=" + actualTP + "U SL=" + actualSL
-				+ "U 手续费=" + feeCost + "U 净利润=" + netProfit + "U");
+				+ "U 手续费=" + feeCost + "U 净利润=" + netProfit + "U" + "  止盈：" + pos.tpPrice + "(" + tpRate + ")" + "/"
+				+ "止损：" + pos.slPrice + "(" + slRate + ")");
 
 		List<TPosition> positions = getPositions(symbol);
 		System.out.println(pos);
@@ -701,6 +705,8 @@ public class DailyProfitTManager {
 		ContractConfig config = getConfig(symbol);
 
 		for (TPosition pos : positions) {
+			System.out.println("=======仓位检测=========");
+			System.out.println(new JSONObject(pos).toString());
 			if (!"open".equals(pos.status))
 				continue;
 

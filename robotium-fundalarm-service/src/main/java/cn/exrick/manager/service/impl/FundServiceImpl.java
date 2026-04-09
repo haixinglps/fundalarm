@@ -364,7 +364,8 @@ public class FundServiceImpl implements FundService {
 						BigDecimal realfene = new BigDecimal("100");
 
 						if (instId.indexOf("SWAP") != -1) {
-							realfene = fundindex.getHuiche().multiply(fundindex.getMoney());
+							realfene = fundItem.getFene();
+							// fundindex.getHuiche().multiply(fundindex.getMoney());
 						}
 
 //						else if (instId.equals("NAVX-USDT")) {
@@ -551,8 +552,8 @@ public class FundServiceImpl implements FundService {
 					String sz = "0";
 					sz = fundItem.getFene().toString();
 
-					if (instId.indexOf("SWAP") != -1)
-						sz = fundItem.getFene().divide(fundindex.getHuiche()).toString();
+//					if (instId.indexOf("SWAP") != -1)
+//						sz = fundItem.getFene().divide(fundindex.getHuiche()).toString();
 
 //					if (instId.contentEquals("DOGE-USDT")) {
 //						sz = fundItem.getFene().toString();//ivide(new BigDecimal("1000"), RoundingMode.DOWN).toString();
@@ -766,9 +767,9 @@ public class FundServiceImpl implements FundService {
 						String sz = fundindex.getMoney().toString();// "0";
 						BigDecimal realfene = fundItem.getFene();
 
-						if (instId.indexOf("SWAP") != -1) {
-							realfene = fundindex.getHuiche().multiply(fundindex.getMoney());
-						}
+//						if (instId.indexOf("SWAP") != -1) {
+//							realfene = fundindex.getHuiche().multiply(fundindex.getMoney());
+//						}
 
 //						if (instId.equals("DOGE-USDT")) {
 //							sz = "2";

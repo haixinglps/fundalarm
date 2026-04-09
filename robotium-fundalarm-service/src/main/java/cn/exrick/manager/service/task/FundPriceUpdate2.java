@@ -1751,7 +1751,7 @@ public class FundPriceUpdate2 {
 
 										}
 									}
-
+									fundInfo.setFene(fund.getMoney().multiply(fund.getHuiche()));
 									caiService.updateCurrentPrice(tableName, jingzhi, alarmtag,
 											fundInfo.getBuypriceReal(),
 
@@ -1802,6 +1802,7 @@ public class FundPriceUpdate2 {
 											// ========== 检查通过，可以建仓 ==========
 											// 【重要】先记录建仓次数，再执行买入，确保异常时次数也被记录
 											recordBuild(fund.getCode());
+											fundInfo.setFene(fund.getMoney().multiply(fund.getHuiche()));
 											if (cbt == 1) {
 												alarmtag = 1;
 												if (fund.getWendu() != null
@@ -1826,6 +1827,8 @@ public class FundPriceUpdate2 {
 										}
 										// RSI<30：超卖，最佳建仓时机
 										else {
+											fundInfo.setFene(fund.getMoney().multiply(fund.getHuiche()));
+
 											// 【全平后暂停检查】防止全平后立即重新建仓
 											if (jedisClient.exists("t:pause:" + fund.getCode())) {
 												System.out.println("【建仓暂停】" + fund.getCode() + " 全平后暂停期内，跳过建仓");
