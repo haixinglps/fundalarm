@@ -672,7 +672,9 @@ public class DailyProfitTManager {
 				+ "U 手续费=" + feeCost + "U 净利润=" + netProfit + "U");
 
 		List<TPosition> positions = getPositions(symbol);
+		System.out.println(pos);
 		positions.add(pos);
+		System.out.println("size::::" + positions.size());
 		savePositions(symbol, positions);
 		System.out.println("======================" + getPositions(symbol).size());
 
