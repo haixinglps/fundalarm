@@ -1068,23 +1068,58 @@ public class DailyProfitTManager {
 		jedisClient.expire(key, 86400);
 	}
 
-	public List<TPosition> getPositions(String symbol) {
-		String key = KEY_POSITIONS.replace("{symbol}", symbol);
-		String json = jedisClient.get(key);
-		if (StrUtil.isBlank(json)) {
-			return new ArrayList<>();
+	private void savePositions(String symbol, List<TPosition> positions) {
+		System.out.println("[Debug-SAVE] symbol=" + symbol + ", positions.size=" + positions.size());
+
+		if (symbol == null || positions == null) {
+			System.out.println("[Debug-SAVE] 参数为空，跳过");
+			return;
 		}
+
 		try {
-			// 使用 Hutool 的 JSON 解析
-			return JSONUtil.toList(JSONUtil.parseArray(json), TPosition.class);
+			String key = KEY_POSITIONS.replace("{symbol}", symbol);
+			String json = JSONUtil.toJsonStr(positions);
+
+			System.out.println("[Debug-SAVE] key=" + key);
+			System.out.println("[Debug-SAVE] json长度=" + json.length() + ", 前100字符="
+					+ json.substring(0, Math.min(100, json.length())));
+
+			String result = jedisClient.set(key, json);
+			System.out.println("[Debug-SAVE] redis set 返回=" + result);
+
+			// 立即验证
+			String verify = jedisClient.get(key);
+			System.out.println("[Debug-SAVE] 立即验证读取=" + (verify != null ? "成功,长度=" + verify.length() : "失败"));
+
 		} catch (Exception e) {
-			return new ArrayList<>();
+			System.out.println("[Debug-SAVE] 异常: " + e.getClass().getName() + ": " + e.getMessage());
+			e.printStackTrace();
 		}
 	}
 
-	private void savePositions(String symbol, List<TPosition> positions) {
-		String key = KEY_POSITIONS.replace("{symbol}", symbol);
-		jedisClient.set(key, JSONUtil.toJsonStr(positions));
+	private List<TPosition> getPositions(String symbol) {
+		System.out.println("[Debug-GET] symbol=" + symbol);
+
+		try {
+			String key = KEY_POSITIONS.replace("{symbol}", symbol);
+			System.out.println("[Debug-GET] key=" + key);
+
+			String val = jedisClient.get(key);
+			System.out.println("[Debug-GET] redis get 返回=" + (val != null ? "非空,长度=" + val.length() : "NULL"));
+
+			if (val == null || val.isEmpty()) {
+				return new ArrayList<>();
+			}
+
+			List<TPosition> list = JSONUtil.toList(val, TPosition.class);
+			System.out.println("[Debug-GET] 反序列化成功, size=" + list.size());
+			return list;
+
+		} catch (Exception e) {
+			System.out.println("[Debug-GET] 异常: " + e.getClass().getName() + ": " + e.getMessage());
+			e.printStackTrace();
+			return new ArrayList<>();
+		}
 	}
 
 	private long getPauseUntil(String symbol) {
