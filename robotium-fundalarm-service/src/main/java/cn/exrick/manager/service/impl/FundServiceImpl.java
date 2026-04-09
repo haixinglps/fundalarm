@@ -310,6 +310,10 @@ public class FundServiceImpl implements FundService {
 				SimpleDateFormat sdfs = new SimpleDateFormat("yyyyMMddHHmm");
 
 				// T交易不移动iscurrent指针
+				Fund1Gaoduanzhuangbei2Ok record22 = new Fund1Gaoduanzhuangbei2Ok();
+
+				record22.setIscurrent(Integer.valueOf(0));
+				this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record22, exampleOri);
 
 				if (funditemNext != null && (funditemNext.getFene() != null)
 						&& (funditemNext.getFene().compareTo(new BigDecimal("0")) > 0)) {
