@@ -674,6 +674,7 @@ public class DailyProfitTManager {
 		List<TPosition> positions = getPositions(symbol);
 		positions.add(pos);
 		savePositions(symbol, positions);
+		System.out.println("======================" + getPositions(symbol).size());
 
 		DailyState state = getDailyState(symbol);
 		state.lastTradeTime = System.currentTimeMillis();
