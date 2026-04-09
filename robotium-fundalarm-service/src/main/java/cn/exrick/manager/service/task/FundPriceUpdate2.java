@@ -75,7 +75,7 @@ public class FundPriceUpdate2 {
 	public static Map<String, String> ck = new HashMap<String, String>();
 	public static String cookieString = "";
 
-	@Scheduled(cron = "* */1 * * * ?")
+	@Scheduled(cron = "0 */1 * * * ?")
 	public void run() {
 		// 定义所有基金表名称。70个，目前6个。
 		List<String> tableNames = new ArrayList<String>();
@@ -1337,7 +1337,7 @@ public class FundPriceUpdate2 {
 //										}
 									}
 								} else {
-									System.out.println("【T开仓】因下单失败，不记录Redis仓位");
+									System.out.println("【T000开仓】因下单失败，不记录Redis仓位");
 								}
 
 							} else if (!canTrade.allowed && score.passed) {
