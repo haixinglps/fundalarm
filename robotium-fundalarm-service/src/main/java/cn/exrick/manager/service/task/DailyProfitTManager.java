@@ -548,6 +548,28 @@ public class DailyProfitTManager {
 	}
 
 	/**
+	 * 【方案1-防并发】立即更新最后交易时间，防止网络延迟期间重复下单
+	 * 在发送订单到OKX前调用，确保冷却时间立即生效
+	 */
+	public void updateLastTradeTime(String symbol) {
+		DailyState state = getDailyState(symbol);
+		state.lastTradeTime = System.currentTimeMillis();
+		saveDailyState(symbol, state);
+		System.out.println("[T-Concurrent-Prevention] " + symbol + " 立即更新lastTradeTime，防止并发下单");
+	}
+
+	/**
+	 * 【方案1-防并发】重置最后交易时间（当订单失败时调用）
+	 * 如果下单失败，重置lastTradeTime允许立即重试
+	 */
+	public void resetLastTradeTime(String symbol) {
+		DailyState state = getDailyState(symbol);
+		state.lastTradeTime = 0;
+		saveDailyState(symbol, state);
+		System.out.println("[T-Concurrent-Prevention] " + symbol + " 重置lastTradeTime，订单失败允许重试");
+	}
+
+	/**
 	 * 开仓（多品种适配，使用指定张数，支持ATR自适应止盈止损）
 	 * 
 	 * @param atrPercent 当前ATR百分比，用于动态调整止盈止损

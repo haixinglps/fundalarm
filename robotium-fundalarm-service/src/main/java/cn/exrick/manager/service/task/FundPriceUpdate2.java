@@ -1274,6 +1274,9 @@ public class FundPriceUpdate2 {
 									jingzhi, zhang, atrPercent);
 							if (canTrade.allowed && score.passed) {
 								System.out.println("开始下单t单");
+								// 【方案1-防并发】先立即更新lastTradeTime，防止网络延迟期间重复下单
+								dailyProfitTManager.updateLastTradeTime(fund.getCode());
+
 								// 【先下单到OKX，成功后再记录Redis】避免状态不一致
 								String posId = "T" + (System.currentTimeMillis() % 100000);
 								boolean orderSuccess = false;
@@ -1338,7 +1341,9 @@ public class FundPriceUpdate2 {
 //										}
 									}
 								} else {
-									System.out.println("【T000开仓】因下单失败，不记录Redis仓位");
+									// 【方案1-防并发】下单失败，重置lastTradeTime允许立即重试
+									dailyProfitTManager.resetLastTradeTime(fund.getCode());
+									System.out.println("【T000开仓】因下单失败，不记录Redis仓位，已重置lastTradeTime允许重试");
 								}
 
 							} else if (!canTrade.allowed && score.passed) {
