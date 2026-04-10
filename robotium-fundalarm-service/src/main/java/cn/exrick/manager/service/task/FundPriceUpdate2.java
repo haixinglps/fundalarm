@@ -75,14 +75,14 @@ public class FundPriceUpdate2 {
 	public static Map<String, String> ck = new HashMap<String, String>();
 	public static String cookieString = "";
 
-	@Scheduled(cron = "0 */1 * * * ?")
+	@Scheduled(cron = "*/1 * * * * ?")
 	public void run() {
 		// 定义所有基金表名称。70个，目前6个。
 		List<String> tableNames = new ArrayList<String>();
 		tableNames.add("fund_1_gaoduanzhuangbei_2_ok");
 		tableNames.add("fund_1_huangjin_5_ok");
 		tableNames.add("fund_1_jungong_3_ok");
-		tableNames.add("fund_1_meitan_4_ok");
+		tableNames.add("fund_1_meitan_/4_ok");
 		tableNames.add("fund_1_zhengquan_6_ok");
 		tableNames.add("fund_1_fangdichan_1_ok");
 
