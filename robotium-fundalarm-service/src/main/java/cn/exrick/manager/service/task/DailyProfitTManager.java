@@ -345,85 +345,85 @@ public class DailyProfitTManager {
 		}
 		total += score.rsiScore;
 
-		// 2. 趋势评分（25分）
-		if ("up".equals(trend)) {
-			score.trendScore = 25;
-			score.trendComment = "上升趋势";
-		} else if ("sideway_up".equals(trend)) {
-			score.trendScore = 20;
-			score.trendComment = "震荡偏多";
-		} else if ("sideway".equals(trend)) {
-			score.trendScore = 10;
-			score.trendComment = "横盘震荡";
-		} else {
-			score.trendScore = 0;
-			score.trendComment = "下降趋势，放弃";
-			score.blocked = true;
-		}
-		total += score.trendScore;
-
-		// 3. 波动率评分（20分）
-		// ATR% 0.8%-2% 最佳
-		if (atrPercent != null) {
-			if (atrPercent.compareTo(new BigDecimal("0.008")) >= 0
-					&& atrPercent.compareTo(new BigDecimal("0.020")) <= 0) {
-				score.volatilityScore = 20;
-				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
-						+ "% 理想";
-			} else if (atrPercent.compareTo(new BigDecimal("0.020")) > 0) {
-				score.volatilityScore = 10;
-				score.volComment = "波动率过高，谨慎";
-			} else {
-				score.volatilityScore = 5;
-				score.volComment = "波动率偏低";
-			}
-		}
-		total += score.volatilityScore;
-
-		// 4. 成交量评分（15分）
-		// 量比>1.2说明有资金关注
-		if (volumeRatio != null) {
-			if (volumeRatio.compareTo(new BigDecimal("1.5")) >= 0) {
-				score.volumeScore = 15;
-				score.volComment += " 量比=" + volumeRatio + " 放量";
-			} else if (volumeRatio.compareTo(new BigDecimal("1.2")) >= 0) {
-				score.volumeScore = 10;
-				score.volComment += " 量比=" + volumeRatio + " 温和";
-			} else {
-				score.volumeScore = 5;
-				score.volComment += " 量比=" + volumeRatio + " 缩量";
-			}
-		}
-		total += score.volumeScore;
-
-		// 5. 时间评分（15分）
-		// 避开开盘9:00-9:10，收盘14:50-15:00
-		Calendar cal = Calendar.getInstance();
-		int hour = cal.get(Calendar.HOUR_OF_DAY);
-		int minute = cal.get(Calendar.MINUTE);
-		int timeScore = 15;
-		String timeComment = "正常时段";
-
-		if (hour == 9 && minute < 10) {
-			timeScore = 0;
-			timeComment = "开盘波动大，观望";
-			score.blocked = true;
-		} else if (hour == 14 && minute >= 50) {
-			timeScore = 5;
-			timeComment = "收盘前，谨慎";
-		} else if (hour == 11 && minute >= 25) {
-			timeScore = 10;
-			timeComment = "午盘前";
-		} else if (hour == 13 && minute < 5) {
-			timeScore = 10;
-			timeComment = "午后开盘";
-		}
-		score.timeScore = timeScore;
-		score.timeComment = timeComment;
-		total += score.timeScore;
+//		// 2. 趋势评分（25分）
+//		if ("up".equals(trend)) {
+//			score.trendScore = 25;
+//			score.trendComment = "上升趋势";
+//		} else if ("sideway_up".equals(trend)) {
+//			score.trendScore = 20;
+//			score.trendComment = "震荡偏多";
+//		} else if ("sideway".equals(trend)) {
+//			score.trendScore = 10;
+//			score.trendComment = "横盘震荡";
+//		} else {
+//			score.trendScore = 0;
+//			score.trendComment = "下降趋势，放弃";
+//			score.blocked = true;
+//		}
+//		total += score.trendScore;
+//
+//		// 3. 波动率评分（20分）
+//		// ATR% 0.8%-2% 最佳
+//		if (atrPercent != null) {
+//			if (atrPercent.compareTo(new BigDecimal("0.008")) >= 0
+//					&& atrPercent.compareTo(new BigDecimal("0.020")) <= 0) {
+//				score.volatilityScore = 20;
+//				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
+//						+ "% 理想";
+//			} else if (atrPercent.compareTo(new BigDecimal("0.020")) > 0) {
+//				score.volatilityScore = 10;
+//				score.volComment = "波动率过高，谨慎";
+//			} else {
+//				score.volatilityScore = 5;
+//				score.volComment = "波动率偏低";
+//			}
+//		}
+//		total += score.volatilityScore;
+//
+//		// 4. 成交量评分（15分）
+//		// 量比>1.2说明有资金关注
+//		if (volumeRatio != null) {
+//			if (volumeRatio.compareTo(new BigDecimal("1.5")) >= 0) {
+//				score.volumeScore = 15;
+//				score.volComment += " 量比=" + volumeRatio + " 放量";
+//			} else if (volumeRatio.compareTo(new BigDecimal("1.2")) >= 0) {
+//				score.volumeScore = 10;
+//				score.volComment += " 量比=" + volumeRatio + " 温和";
+//			} else {
+//				score.volumeScore = 5;
+//				score.volComment += " 量比=" + volumeRatio + " 缩量";
+//			}
+//		}
+//		total += score.volumeScore;
+//
+//		// 5. 时间评分（15分）
+//		// 避开开盘9:00-9:10，收盘14:50-15:00
+//		Calendar cal = Calendar.getInstance();
+//		int hour = cal.get(Calendar.HOUR_OF_DAY);
+//		int minute = cal.get(Calendar.MINUTE);
+//		int timeScore = 15;
+//		String timeComment = "正常时段";
+//
+//		if (hour == 9 && minute < 10) {
+//			timeScore = 0;
+//			timeComment = "开盘波动大，观望";
+//			score.blocked = true;
+//		} else if (hour == 14 && minute >= 50) {
+//			timeScore = 5;
+//			timeComment = "收盘前，谨慎";
+//		} else if (hour == 11 && minute >= 25) {
+//			timeScore = 10;
+//			timeComment = "午盘前";
+//		} else if (hour == 13 && minute < 5) {
+//			timeScore = 10;
+//			timeComment = "午后开盘";
+//		}
+//		score.timeScore = timeScore;
+//		score.timeComment = timeComment;
+//		total += score.timeScore;
 
 		score.totalScore = total;
-		score.passed = !score.blocked && total >= 60;
+		score.passed = (atrPercent.compareTo(new BigDecimal("0.0015")) >= 0) && total >= 20;
 
 		return score;
 	}
@@ -843,11 +843,11 @@ public class DailyProfitTManager {
 			state.consecutiveLosses = 0; // 重置连续亏损
 		} else {
 			state.lossCount++;
-			state.consecutiveLosses++;
+			// state.consecutiveLosses++;
 			// 连续2亏，暂停30分钟
-			if (state.consecutiveLosses >= 2) {
-				setPauseUntil(symbol, System.currentTimeMillis() + 30 * 60 * 1000);
-			}
+//			if (state.consecutiveLosses >= 2) {
+//				setPauseUntil(symbol, System.currentTimeMillis() + 30 * 60 * 1000);
+//			}
 		}
 
 		// 检查是否达成目标或触及止损
