@@ -1342,7 +1342,10 @@ public class FundPriceUpdate2 {
 								}
 
 							} else if (!canTrade.allowed && score.passed) {
-								System.out.println("【T不可开】" + fund.getCode() + " " + canTrade.reason);
+								System.out.println("【T不可开-rsi或者间距不足】" + fund.getCode() + " " + canTrade.reason);
+							} else {
+								System.out.println("【T不可开-分数或者振幅小】" + fund.getCode() + " " + score.totalScore);
+
 							}
 
 							// 4. 检查退出信号（先下单OKX，成功后再清Redis）
