@@ -1,12 +1,18 @@
 package cn.exrick.manager.service.impl;
 
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import javax.annotation.Resource;
 
@@ -190,20 +196,20 @@ public class RobotServiceImpl implements RobotService {
 		ZmqVideoExample exampleWaiwangzmq = new ZmqVideoExample();
 		cn.exrick.manager.pojo.ZmqVideoExample.Criteria criteriazmq = exampleWaiwangzmq.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriazmq.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriazmq.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriazmq.andTitleLike("%" + text + "%");
 
 		}
 //		criteriaWw2.andTitleNotEqualTo("");
 		criteriazmq.andDurationIsNotNull();
-		exampleWaiwangzmq.setOrderByClause("vid desc");
-		PageHelper.startPage(1, 10);
+		exampleWaiwangzmq.setOrderByClause("addtime desc");
+		PageHelper.startPage(1, 5);
 		List<ZmqVideo> listWaiwangzmq = zmqVideoMapper.selectByExample(exampleWaiwangzmq);
 		PageInfo<ZmqVideo> pizmqInfo = new PageInfo<ZmqVideo>(listWaiwangzmq);
 		System.out.println("zmq查询完成，结果数: " + listWaiwangzmq.size() + ", 总数: " + pizmqInfo.getTotal());
@@ -253,19 +259,22 @@ public class RobotServiceImpl implements RobotService {
 		Waiwang2VideoExample exampleWaiwang2 = new Waiwang2VideoExample();
 		cn.exrick.manager.pojo.Waiwang2VideoExample.Criteria criteriaWw2 = exampleWaiwang2.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriaWw2.andTitleLike("%" + item + "%");
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriaWw2.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriaWw2.andTitleLike("%" + text + "%");
 
 		}
 //		criteriaWw2.andTitleNotEqualTo("");
 		criteriaWw2.andDurationIsNotNull();
+		// 排除 pantag 不含 http 的结果
+		criteriaWw2.andPantagLike("%http%");
 		exampleWaiwang2.setOrderByClause("dt desc");
-		PageHelper.startPage(1, 10);
+		PageHelper.startPage(1, 5);
 		List<Waiwang2Video> listWaiwang2 = waiwang2VideoMapper.selectByExample(exampleWaiwang2);
 		PageInfo<Waiwang2Video> pibcInfo = new PageInfo<Waiwang2Video>(listWaiwang2);
 
@@ -312,35 +321,36 @@ public class RobotServiceImpl implements RobotService {
 
 		cn.exrick.manager.pojo.WanwuVideoExample.Criteria criteria = example.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteria.andTitleLike("%" + item + "%");
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteria.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteria.andTitleLike("%" + text + "%");
 		}
 //		criteriaTaolu.andTitleNotEqualTo("");
 
-		example.setOrderByClause("sales desc");
-		PageHelper.startPage(1, 10);
+		example.setOrderByClause("addtime desc");
+		PageHelper.startPage(1, 5);
 		List<WanwuVideo> list = wanwuVideoMapper.selectByExample(example);
 		PageInfo<WanwuVideo> piwwInfo = new PageInfo<WanwuVideo>(list);
 
-		re.append("玩物搜索 " + piwwInfo.getTotal() + "条（只返回前10条，如果需要所有的找客服要）\n");
+		re.append("玩物搜索 " + piwwInfo.getTotal() + "条（只返回前5条，如果需要所有的找客服要）\n");
 		mediaList = new ArrayList<InputMedia>();
 
 		for (int i = 0; i < list.size(); i++) {
 			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
 					"ww" + list.get(i).getVid());
 
-//			if (i == 3 || i == 4)
-//				continue;
+			// 检查封面是否为空
+			String cover = list.get(i).getCover();
+			if (cover == null || cover.trim().isEmpty()) {
+				cover = "https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56";
+			}
 
-//			System.out.println("--------------------index:" + i + "\t" + list.get(i).getTitle() + "\t"
-//					+ list.get(i).getAddtime() + "\t" + "机器人口令：ww" + list.get(i).getVid() + "\t" + link + "");
-
-			InputMediaPhoto photo = new InputMediaPhoto(list.get(i).getCover());
+			InputMediaPhoto photo = new InputMediaPhoto(cover);
 			photo.setCaption(i + "\t" + list.get(i).getTitle().split("_")[0] + "\tid:" + list.get(i).getAuthor()
 					+ "\t作者：" + list.get(i).getUrlkey2() + "\t时长:" + list.get(i).getDuration() + "\t时间："
 					+ list.get(i).getAddtime() + "\t" + "机器人口令：ww" + list.get(i).getVid() + "\t" + link + ""); // 每张图片独立描述
@@ -391,19 +401,20 @@ public class RobotServiceImpl implements RobotService {
 		Taolu3VideoExample exampleTaolu = new Taolu3VideoExample();
 		cn.exrick.manager.pojo.Taolu3VideoExample.Criteria criteriaTaolu = exampleTaolu.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriaTaolu.andTitleLike("%" + item + "%");
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriaTaolu.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriaTaolu.andTitleLike("%" + text + "%");
 
 		}
 //		criteriaTaolu.andTitleNotEqualTo("");
 
-		exampleTaolu.setOrderByClause("vid desc");
-		PageHelper.startPage(1, 10);
+		exampleTaolu.setOrderByClause("dt desc");
+		PageHelper.startPage(1, 5);
 		List<Taolu3Video> listTaolu = taolu3VideoMapper.selectByExample(exampleTaolu);
 		PageInfo<Taolu3Video> pitlInfo = new PageInfo<Taolu3Video>(listTaolu);
 
@@ -413,7 +424,12 @@ public class RobotServiceImpl implements RobotService {
 		for (int i = 0; i < listTaolu.size(); i++) {
 			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
 					"tl" + listTaolu.get(i).getVid());
-			InputMediaPhoto photo = new InputMediaPhoto(listTaolu.get(i).getCover());
+			// 检查封面是否为空
+			String cover = listTaolu.get(i).getCover();
+			if (cover == null || cover.trim().isEmpty()) {
+				cover = "https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56";
+			}
+			InputMediaPhoto photo = new InputMediaPhoto(cover);
 			photo.setCaption(i + "\t" + listTaolu.get(i).getTitle().split("_")[0] + "\tid:"
 					+ listTaolu.get(i).getAuthor() + "\t作者：" + listTaolu.get(i).getUrlkey2() + "\t时间："
 					+ listTaolu.get(i).getDt() + "\t" + "机器人口令：tl" + listTaolu.get(i).getVid() + "\t" + link); // 每张图片独立描述
@@ -451,20 +467,22 @@ public class RobotServiceImpl implements RobotService {
 		WaiwangVideoExample exampleWaiwang = new WaiwangVideoExample();
 		cn.exrick.manager.pojo.WaiwangVideoExample.Criteria criteriaWw = exampleWaiwang.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriaWw.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriaWw.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriaWw.andTitleLike("%" + text + "%");
 
 		}
 		criteriaWw.andTitleNotEqualTo("");
 		criteriaWw.andDurationGreaterThan("600");
+		// 排除 friendindex = 1 的记录
+		criteriaWw.andFriendindexNotEqualTo(1);
 		exampleWaiwang.setOrderByClause("dt desc");
-		PageHelper.startPage(1, 10);
+		PageHelper.startPage(1, 5);
 		List<WaiwangVideo> listWaiwang = waiwangVideoMapper.selectByExample(exampleWaiwang);
 		PageInfo<WaiwangVideo> pitgInfo = new PageInfo<WaiwangVideo>(listWaiwang);
 
@@ -510,8 +528,10 @@ public class RobotServiceImpl implements RobotService {
 		// 只有当 search 成功创建后才执行 isearch 搜索
 		if (search != null) {
 			try {
-				search.andCategory("DM", "t.me");
+				// DM字段过滤已移除
 				search.andText("TX", text);
+				// 使用 notIndexedText 过滤 CH 字段
+				search.andNotIndexedText("CH", "kaikai");
 				Calendar calendar = Calendar.getInstance();
 				calendar.add(Calendar.YEAR, -10);
 				search.greatThan("RQ", calendar.getTimeInMillis());
@@ -576,6 +596,11 @@ public class RobotServiceImpl implements RobotService {
 		String responseT = re.toString();
 		String validRes = escapeMarkdown(responseT);
 
+		// 如果没有搜索结果，发送提示
+		if (validRes.trim().isEmpty()) {
+			validRes = "❌ 未找到相关作品: " + text;
+		}
+
 //		telegramChannelMonitor.sendChannelReply(chatId, validRes, channelMsg.getMessageId());
 
 		int maxLength = 4096;
@@ -589,24 +614,27 @@ public class RobotServiceImpl implements RobotService {
 //		 channelMsg.getMessageId());
 
 		}
-		if (channelMsg.getFrom().getUserName() != null) {
-			if (text == null) {
-				text = "";
-			}
-			String info = channelMsg.getFrom().getUserName() + "_" + text.replace("_", "").replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "");
-			// 注册事务提交后的回调
-			org.springframework.transaction.support.TransactionSynchronizationManager
-					.registerSynchronization(new TransactionSynchronizationAdapter() {
-						@Override
-						public void afterCommit() {
-							// 使用异步服务发送消息
-							// 推送数据到redis队列里进行计算。
-
-							publisher.publishEventAsync(info, update);
-//							jedisClient.lpush("videos", info);
-						}
-					});
+		if (text == null) {
+			text = "";
 		}
+		String info;
+		if (channelMsg.getFrom().getUserName() != null) {
+			info = channelMsg.getFrom().getUserName() + "_" + text.replace("_", "").replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "").replace("/", "");
+		} else {
+			info = "uid" + channelMsg.getFrom().getId() + "_" + text.replace("_", "").replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "").replace("/", "");
+		}
+		// 注册事务提交后的回调
+		org.springframework.transaction.support.TransactionSynchronizationManager
+				.registerSynchronization(new TransactionSynchronizationAdapter() {
+					@Override
+					public void afterCommit() {
+						// 使用异步服务发送消息
+						// 推送数据到redis队列里进行计算。
+
+						publisher.publishEventAsync(info, update);
+//						jedisClient.lpush("videos", info);
+					}
+				});
 
 		return;
 	}
@@ -619,7 +647,7 @@ public class RobotServiceImpl implements RobotService {
 		Integer messageThreadId = null;
 		// 确保更新包含消息
 		if (!update.getMessage().hasText()) {
-			System.out.println("没有文本");
+			// System.out.println("没有文本");
 			return;
 		}
 
@@ -779,6 +807,7 @@ public class RobotServiceImpl implements RobotService {
 		String wpString = "";
 		String coverString = "";
 		String author = "";
+		String avatarUrl = "";
 		int zhindex = 0;
 		int yc = 0;
 
@@ -932,25 +961,21 @@ public class RobotServiceImpl implements RobotService {
 				title = listZmq.get(0).getTitle();
 				byString = listZmq.get(0).getTria();
 				coverString = listZmq.get(0).getCover();
+				System.out.println("[DEBUG-ZM] vid=" + vid + ", url=" + url + ", byString=" + byString + ", wpString=" + listZmq.get(0).getUptag3());
 
 				if (byString.contentEquals("sk")) {
 
 					if (receivedMessage.getFrom().getUserName() == null) {
-						// TODO: handle exception
-						replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
 						replyMessage.setText(replyText);
-
 						try {
 							telegramChannelMonitor.execute(replyMessage);
 						} catch (TelegramApiException e1) {
-							// TODO Auto-generated catch block
 							e1.printStackTrace();
 							log.error("服务器异常");
 						}
 						return;
-
 					}
-
 				}
 
 				wpString = listZmq.get(0).getUptag3() + "";
@@ -1011,7 +1036,7 @@ public class RobotServiceImpl implements RobotService {
 
 					if (receivedMessage.getFrom().getUserName() == null) {
 						// TODO: handle exception
-						replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
 						replyMessage.setText(replyText);
 
 						try {
@@ -1124,7 +1149,7 @@ public class RobotServiceImpl implements RobotService {
 
 					if (receivedMessage.getFrom().getUserName() == null) {
 						// TODO: handle exception
-						replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
 						replyMessage.setText(replyText);
 
 						try {
@@ -1182,6 +1207,18 @@ public class RobotServiceImpl implements RobotService {
 			System.out.println("---------------------------------------------搜索成功2");
 
 			if (video != null) {
+				// 排除 friendindex = 1 的记录
+				if (video.getFriendindex() == 1) {
+					replyText += "该作品暂不可提取\n";
+					replyMessage.setText(replyText);
+					try {
+						telegramChannelMonitor.execute(replyMessage);
+					} catch (TelegramApiException e1) {
+						e1.printStackTrace();
+						log.error("服务器异常");
+					}
+					return;
+				}
 				url = video.getUrl();
 				String mid = url.substring(url.lastIndexOf("/") + 1);
 				String prix = url.substring(0, url.lastIndexOf("/") + 1);
@@ -1201,7 +1238,7 @@ public class RobotServiceImpl implements RobotService {
 
 					if (receivedMessage.getFrom().getUserName() == null) {
 						// TODO: handle exception
-						replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
 						replyMessage.setText(replyText);
 
 						try {
@@ -1303,14 +1340,17 @@ public class RobotServiceImpl implements RobotService {
 				return;
 			}
 			Waiwang2VideoExample examplezb = new Waiwang2VideoExample();
-			examplezb.createCriteria().andUidEqualTo(vid + "");
+			examplezb.createCriteria().andAuthorEqualTo(vid + "");
 			examplezb.setOrderByClause("dt desc");
 			PageHelper.startPage(1, 1);
 			List<Waiwang2Video> videozbs = waiwang2VideoMapper.selectByExample(examplezb);
-			if (videozbs.size() > 0) {
+			if (videozbs != null && !videozbs.isEmpty()) {
 				Waiwang2Video videozb = videozbs.get(0);
 				url = videozb.getType();
 				title = videozb.getTitle();
+				coverString = videozb.getCover();
+				author = videozb.getNickname();
+				avatarUrl = videozb.getPhoto();
 //				videozb.setGoodtag(1);
 //				// 更新数据库：
 //				waiwang2VideoMapper.updateByPrimaryKeySelective(video2);
@@ -1345,8 +1385,25 @@ public class RobotServiceImpl implements RobotService {
 		}
 		title = title.replace(",", "").replace("___", "");
 
+		// 每日提取次数限制：topicok=1（VIP群成员）每日限10次
+		if (topicok == 1) {
+			if (!checkDailyExtractLimit(identifier, topicok)) {
+				replyText += "\n⚠️ 今日提取次数已达上限（1000000次），请明日再试。";
+				replyMessage.setText(replyText);
+				try {
+					telegramChannelMonitor.execute(replyMessage);
+				} catch (TelegramApiException e1) {
+					e1.printStackTrace();
+					log.error("服务器异常");
+				}
+				return;
+			}
+		}
+
 		if (pri.contentEquals("bc")) {
-			replyText += "为你提取到的作品链接是：\n" + title + "\n" + url + "\n本地路径：" + byString + "\n所在网盘：" + wpString;
+			// .xyz / t.me 域名不直接展示 URL
+			String displayUrl = (url != null && (url.contains(".xyz") || url.contains("t.me"))) ? "" : url;
+			replyText += "为你提取到的作品链接是：\n" + title + "\n" + displayUrl + "\n本地路径：" + byString + "\n所在网盘：" + wpString;
 			if (byString != null) {
 
 				File file = new File(byString);
@@ -1354,7 +1411,7 @@ public class RobotServiceImpl implements RobotService {
 
 					if (receivedMessage.getFrom().getUserName() == null) {
 						// TODO: handle exception
-						replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
 						replyMessage.setText(replyText);
 
 						try {
@@ -1372,7 +1429,7 @@ public class RobotServiceImpl implements RobotService {
 //					String info = identifier + "," + byString + "," + receivedText+","+;
 					String info = identifier + "," + byString + "," + title + "," + receivedText + "," + chatId + ","
 							+ coverString;
-					info = info + "," + byString + ",0," + author + "," + zhindex + "," + topicok;
+					info = info + "," + byString + ",0," + author + "," + zhindex + "," + topicok + "," + receivedMessage.getFrom().getId() + "," + receivedMessage.getMessageId() + "," + (messageThreadId != null ? messageThreadId : "") + ",0" + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
 					final String info2 = info;
 					// 注册事务提交后的回调
 					org.springframework.transaction.support.TransactionSynchronizationManager
@@ -1400,251 +1457,147 @@ public class RobotServiceImpl implements RobotService {
 //			replyText += "\n(这是个秘钥，发给客服，会给你mp4)";
 		} else if (pri.contentEquals("zb")) {
 			// 校验rtmp链接是否报废：
-
 			if (!UrlValidator.validateWithFFmpeg(url)) {
 				replyText += "主播还未开播或直播已结束";
 				replyMessage.setText(replyText);
-
 				try {
 					telegramChannelMonitor.execute(replyMessage);
 				} catch (TelegramApiException e1) {
-					// TODO Auto-generated catch block
 					e1.printStackTrace();
 					log.error("服务器异常");
 				}
 				return;
 			}
-			replyText += "为你提取到的直播地址是：\n" + title + "\n" + url;
 
-			replyText += "\n(直播链接需要用手机qq浏览器打开【万一打不开，赶快找客服，可能改版了或者你手机网络问题】)";
+			// 地址打码
+			String maskedUrl = "";
+			if (url != null && url.startsWith("rtmp://")) {
+				String[] parts = url.split("/", 3);
+				if (parts.length >= 3) {
+					maskedUrl = parts[0] + "//" + parts[2] + "/***";
+				} else {
+					maskedUrl = url.substring(0, Math.min(url.length(), 20)) + "***";
+				}
+			} else {
+				maskedUrl = url;
+			}
+
+			// 构造luzhi录制队列消息
+			String roomId = "";
+			try {
+				roomId = url.split("_")[1].split("\\?")[0];
+			} catch (Exception e) {
+				roomId = vid + "";
+			}
+
+			java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd_HHmmss");
+			String tmStr = sdf.format(new java.util.Date());
+			String safeTitle = title.replaceAll("[^\\w\\u4e00-\\u9fa5-]", "").replaceAll("[-_]{2,}", "_");
+			String safeNick = (author != null ? author : "").replaceAll("[^\\w\\u4e00-\\u9fa5-]", "").replaceAll("[-_]{2,}", "_");
+			if (safeNick.isEmpty()) safeNick = "unknown";
+			if (safeTitle.isEmpty()) safeTitle = safeNick;
+			String tt = safeTitle + "_" + safeNick + "_" + tmStr;
+			String up = "/root/data/disk/" + tt + ".mp4";
+
+			String info = identifier + "," + up + "," + tt + ",zb" + roomId + ",135," + (coverString != null ? coverString : "") + "," + up + ",0," + (author != null ? author : "") + ",0,1";
+			String message = url + "," + info;
+
+			// luzhi队列去重：检查是否已有相同URL
+			boolean existsInQueue = false;
+			try {
+				List<String> luzhiItems = jedisClient.lrange("luzhi", 0, -1);
+				List<String> luzhiBakItems = jedisClient.lrange("luzhi_bak", 0, -1);
+				for (String qi : luzhiItems) {
+					if (qi != null && qi.startsWith(url)) {
+						existsInQueue = true;
+						break;
+					}
+				}
+				if (!existsInQueue) {
+					for (String qi : luzhiBakItems) {
+						if (qi != null && qi.startsWith(url)) {
+							existsInQueue = true;
+							break;
+						}
+					}
+				}
+			} catch (Exception e) {
+				System.out.println("[ZB_LUZHI] 去重检查异常: " + e.getMessage());
+			}
+
+			if (existsInQueue) {
+				System.out.println("[ZB_LUZHI] 队列中已存在相同直播间，跳过: room=" + roomId);
+				replyText += "🎥 该直播间已在录制队列中，请稍候。\n\n标题: " + title;
+			} else {
+				jedisClient.lpush("luzhi", message);
+				System.out.println("[ZB_LUZHI] 推入录制队列: room=" + roomId + ", nick=" + author + ", user=" + identifier);
+				replyText += "🎥 主播正在直播中，已开始录制！\n\n标题: " + title + "\n\n录制完成后会自动发送视频文件，请稍候。";
+
+			}
+
 		} else {
 
 			String url2 = url;
 			String pan2 = byString;
 
-			if (identifier.contentEquals("@kaikak09818")) {
-				yc = 0;
-			}
-			if (identifier.contentEquals("@linyuan56")) {
-				yc = 0;
-			}
-			if (yc == 1) {
-				url2 = "";
-				pan2 = "";
+			// 管理员判断
+			boolean isAdmin = identifier != null &&
+					(identifier.contentEquals("@kaikak09818") || identifier.contentEquals("@linyuan56"));
 
+			// URL展示规则：zhuanma/kelly允许展示，其他不展示，管理员例外
+			if (url2 != null && !isAdmin) {
+				if (!url2.contains("zhuanma") && !url2.contains("kelly")) {
+					url2 = "";
+				}
+			}
+
+			// 网盘链接展示规则：feijipan/quark/pikpak允许，其他不展示
+			boolean isValidPan = pan2 != null && (
+					pan2.contains("feijipan.com") || pan2.contains("feijipan.cn")
+					|| pan2.contains("quark.cn") || pan2.contains("quark.com")
+					|| pan2.contains("pikpak"));
+			System.out.println("[DEBUG-ZM-REPLY] url2=" + url2 + ", pan2=" + pan2 + ", isValidPan=" + isValidPan + ", isAdmin=" + isAdmin);
+			if (!isValidPan) {
+				pan2 = "";
+			}
+			// tg命令的byString不是网盘链接，不展示
+			if (pri.contentEquals("tg")) {
+				pan2 = "";
 			}
 
 			replyText += "为你提取到的作品链接是：\n" + title + "\n" + url2 + "\n网盘分享链接：" + pan2 + "\n所在网盘：" + wpString;
-			if ((pri.contentEquals("tl") && (byString.contentEquals("sk") || byString.indexOf("t.me") != -1
-					|| byString.indexOf("pikpak") != -1))) {
 
+			// 推队列规则：feijipan/quark不推，其他（pikpak/sk/t.me等）推
+			boolean isFeijipanQuark = byString != null && (
+					byString.contains("feijipan.com") || byString.contains("feijipan.cn")
+					|| byString.contains("quark.cn") || byString.contains("quark.com"));
+
+			if (!isFeijipanQuark) {
 				if (receivedMessage.getFrom().getUserName() == null) {
-					// TODO: handle exception
-					replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+					replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
 					replyMessage.setText(replyText);
-
 					try {
 						telegramChannelMonitor.execute(replyMessage);
 					} catch (TelegramApiException e1) {
-						// TODO Auto-generated catch block
 						e1.printStackTrace();
 						log.error("服务器异常");
 					}
 					return;
-
 				}
 
 				replyText += "\n" + "稍后会自动发送你视频文件，因为没有网盘分享链接";
 				String info = identifier + "," + url + "," + title + "," + receivedText + "," + chatId + ","
 						+ coverString;
-//				if (byString.indexOf("pikpak") != -1) {
-				info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok;
-//				}
-				final String finalInfo = info; // 创建 final 副本
-
-				// 注册事务提交后的回调
+				info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok + "," + receivedMessage.getFrom().getId() + "," + receivedMessage.getMessageId() + "," + (messageThreadId != null ? messageThreadId : "") + ",0" + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
+				final String finalInfo = info;
 				org.springframework.transaction.support.TransactionSynchronizationManager
 						.registerSynchronization(new TransactionSynchronizationAdapter() {
 							@Override
 							public void afterCommit() {
-								// 使用异步服务发送消息
-								// 推送数据到redis队列里进行计算。
-
-//								publisher.publishEventAsync(nt.getEventContent(), transactionCode);
 								jedisClient.rpush("videos", finalInfo);
 							}
 						});
-
 			}
-
-			if ((pri.contentEquals("zm") && (byString.contentEquals("sk") || byString.indexOf("t.me") != -1
-					|| byString.indexOf("pikpak") != -1))) {
-
-				if (receivedMessage.getFrom().getUserName() == null) {
-					// TODO: handle exception
-					replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
-					replyMessage.setText(replyText);
-
-					try {
-						telegramChannelMonitor.execute(replyMessage);
-					} catch (TelegramApiException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-						log.error("服务器异常");
-					}
-					return;
-
-				}
-
-				replyText += "\n" + "稍后会自动发送你视频文件，因为没有网盘分享链接";
-				String info = identifier + "," + url + "," + title + "," + receivedText + "," + chatId + ","
-						+ coverString;
-//				if (byString.indexOf("pikpak") != -1) {
-//					info += "," + byString + "," + wpString;
-//				}
-				info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok;
-
-				final String finalInfo = info; // 创建 final 副本
-
-				// 注册事务提交后的回调
-				org.springframework.transaction.support.TransactionSynchronizationManager
-						.registerSynchronization(new TransactionSynchronizationAdapter() {
-							@Override
-							public void afterCommit() {
-								// 使用异步服务发送消息
-								// 推送数据到redis队列里进行计算。
-
-//								publisher.publishEventAsync(nt.getEventContent(), transactionCode);
-								jedisClient.rpush("videos", finalInfo);
-							}
-						});
-
-			}
-
-			if ((pri.contentEquals("ww") && (byString.contentEquals("sk") || byString.indexOf("t.me") != -1
-					|| byString.indexOf("pikpak") != -1))) {
-
-				if (receivedMessage.getFrom().getUserName() == null) {
-					// TODO: handle exception
-					replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
-					replyMessage.setText(replyText);
-
-					try {
-						telegramChannelMonitor.execute(replyMessage);
-					} catch (TelegramApiException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-						log.error("服务器异常");
-					}
-					return;
-
-				}
-
-				replyText += "\n" + "稍后会自动发送你视频文件，因为没有网盘分享链接";
-				String info = identifier + "," + url + "," + title + "," + receivedText + "," + chatId + ","
-						+ coverString;
-//				if (byString.indexOf("pikpak") != -1) {
-//				info += "," + byString + "," + wpString + "," + author;
-				info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok;
-
-//				}
-				final String finalInfo = info; // 创建 final 副本
-
-				// 注册事务提交后的回调
-				org.springframework.transaction.support.TransactionSynchronizationManager
-						.registerSynchronization(new TransactionSynchronizationAdapter() {
-							@Override
-							public void afterCommit() {
-								// 使用异步服务发送消息
-								// 推送数据到redis队列里进行计算。
-
-//								publisher.publishEventAsync(nt.getEventContent(), transactionCode);
-								jedisClient.rpush("videos", finalInfo);
-							}
-						});
-
-			}
-			if ((pri.contentEquals("tg"))
-					&& (byString == null || byString.indexOf("t.me") != -1 || url.indexOf("t.me") != -1)) {// &&
-				// byString
-				// == null
-
-				if (receivedMessage.getFrom().getUserName() == null) {
-					// TODO: handle exception
-					replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
-					replyMessage.setText(replyText);
-
-					try {
-						telegramChannelMonitor.execute(replyMessage);
-					} catch (TelegramApiException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-						log.error("服务器异常");
-					}
-					return;
-
-				}
-
-				replyText += "\n" + "稍后会自动发送你视频文件，因为没有网盘分享链接";
-				String info = identifier + "," + url + "," + title + "," + receivedText + "," + chatId + ","
-						+ coverString;
-				info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok;
-				final String info2 = info;
-				// 注册事务提交后的回调
-				org.springframework.transaction.support.TransactionSynchronizationManager
-						.registerSynchronization(new TransactionSynchronizationAdapter() {
-							@Override
-							public void afterCommit() {
-								// 使用异步服务发送消息
-								// 推送数据到redis队列里进行计算。
-
-//								publisher.publishEventAsync(nt.getEventContent(), transactionCode);
-								jedisClient.rpush("videos", info2);
-							}
-						});
-
-			}
-			if ((pri.contentEquals("ch")) && (byString == null || byString.contentEquals("")
-					|| byString.contentEquals("null") || byString.indexOf("t.me") != -1 || url.indexOf("t.me") != -1)) {// &&
-				// byString
-				// == null
-
-				if (receivedMessage.getFrom().getUserName() == null) {
-					// TODO: handle exception
-					replyText += "请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
-					replyMessage.setText(replyText);
-
-					try {
-						telegramChannelMonitor.execute(replyMessage);
-					} catch (TelegramApiException e1) {
-						// TODO Auto-generated catch block
-						e1.printStackTrace();
-						log.error("服务器异常");
-					}
-					return;
-
-				}
-
-				replyText += "\n" + "稍后会自动发送你视频文件，因为没有网盘分享链接";
-				String info = identifier + "," + url + "," + title + "," + receivedText + "," + chatId + ","
-						+ coverString;
-				info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok;
-				final String info2 = info;
-				// 注册事务提交后的回调
-				org.springframework.transaction.support.TransactionSynchronizationManager
-						.registerSynchronization(new TransactionSynchronizationAdapter() {
-							@Override
-							public void afterCommit() {
-								// 使用异步服务发送消息
-								// 推送数据到redis队列里进行计算。
-
-//								publisher.publishEventAsync(nt.getEventContent(), transactionCode);
-								jedisClient.rpush("videos", info2);
-							}
-						});
-
-			}
-
 		}
 
 		replyMessage.setText(replyText);
@@ -2087,20 +2040,20 @@ public class RobotServiceImpl implements RobotService {
 		ZmqVideoExample exampleWaiwangzmq = new ZmqVideoExample();
 		cn.exrick.manager.pojo.ZmqVideoExample.Criteria criteriazmq = exampleWaiwangzmq.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriazmq.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriazmq.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriazmq.andTitleLike("%" + text + "%");
 
 		}
 //		criteriaWw2.andTitleNotEqualTo("");
 		criteriazmq.andDurationIsNotNull();
-		exampleWaiwangzmq.setOrderByClause("vid desc");
-		PageHelper.startPage(1, 1000);
+		exampleWaiwangzmq.setOrderByClause("addtime desc");
+		PageHelper.startPage(1, 10000);
 		List<ZmqVideo> listWaiwangzmq = zmqVideoMapper.selectByExample(exampleWaiwangzmq);
 		PageInfo<ZmqVideo> pizmqInfo = new PageInfo<ZmqVideo>(listWaiwangzmq);
 
@@ -2154,20 +2107,22 @@ public class RobotServiceImpl implements RobotService {
 		Waiwang2VideoExample exampleWaiwang2 = new Waiwang2VideoExample();
 		cn.exrick.manager.pojo.Waiwang2VideoExample.Criteria criteriaWw2 = exampleWaiwang2.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriaWw2.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriaWw2.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriaWw2.andTitleLike("%" + text + "%");
 
 		}
 //		criteriaWw2.andTitleNotEqualTo("");
 		criteriaWw2.andDurationIsNotNull();
+		// 排除 pantag 不含 http 的结果
+		criteriaWw2.andPantagLike("%http%");
 		exampleWaiwang2.setOrderByClause("dt desc");
-		PageHelper.startPage(1, 1000);
+		PageHelper.startPage(1, 10000);
 		List<Waiwang2Video> listWaiwang2 = waiwang2VideoMapper.selectByExample(exampleWaiwang2);
 		PageInfo<Waiwang2Video> pibcInfo = new PageInfo<Waiwang2Video>(listWaiwang2);
 
@@ -2223,23 +2178,23 @@ public class RobotServiceImpl implements RobotService {
 
 		cn.exrick.manager.pojo.WanwuVideoExample.Criteria criteria = example.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteria.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteria.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteria.andTitleLike("%" + text + "%");
 		}
 //		criteriaTaolu.andTitleNotEqualTo("");
 
-		example.setOrderByClause("sales desc");
-		PageHelper.startPage(1, 1000);
+		example.setOrderByClause("addtime desc");
+		PageHelper.startPage(1, 10000);
 		List<WanwuVideo> list = wanwuVideoMapper.selectByExample(example);
 		PageInfo<WanwuVideo> piwwInfo = new PageInfo<WanwuVideo>(list);
 
-		re.append("玩物搜索 " + piwwInfo.getTotal() + "条（只返回前1000条，如果需要所有的找客服要）\r\n");
+		re.append("玩物搜索 " + piwwInfo.getTotal() + "条（只返回前10000条，如果需要所有的找客服要）\r\n");
 		mediaList = new ArrayList<InputMedia>();
 
 		for (int i = 0; i < list.size(); i++) {
@@ -2252,7 +2207,12 @@ public class RobotServiceImpl implements RobotService {
 //			System.out.println("--------------------index:" + i + "\t" + list.get(i).getTitle() + "\t"
 //					+ list.get(i).getAddtime() + "\t" + "机器人口令：ww" + list.get(i).getVid() + "\t" + link + "");
 
-			InputMediaPhoto photo = new InputMediaPhoto(list.get(i).getCover());
+			// 检查封面是否为空
+			String cover = list.get(i).getCover();
+			if (cover == null || cover.trim().isEmpty()) {
+				cover = "https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56";
+			}
+			InputMediaPhoto photo = new InputMediaPhoto(cover);
 
 			String tt = list.get(i).getTitle().split("_")[0];
 
@@ -2318,20 +2278,20 @@ public class RobotServiceImpl implements RobotService {
 		Taolu3VideoExample exampleTaolu = new Taolu3VideoExample();
 		cn.exrick.manager.pojo.Taolu3VideoExample.Criteria criteriaTaolu = exampleTaolu.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriaTaolu.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriaTaolu.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriaTaolu.andTitleLike("%" + text + "%");
 
 		}
 //		criteriaTaolu.andTitleNotEqualTo("");
 
-		exampleTaolu.setOrderByClause("vid desc");
-		PageHelper.startPage(1, 1000);
+		exampleTaolu.setOrderByClause("dt desc");
+		PageHelper.startPage(1, 10000);
 		List<Taolu3Video> listTaolu = taolu3VideoMapper.selectByExample(exampleTaolu);
 		PageInfo<Taolu3Video> pitlInfo = new PageInfo<Taolu3Video>(listTaolu);
 
@@ -2341,7 +2301,12 @@ public class RobotServiceImpl implements RobotService {
 		for (int i = 0; i < listTaolu.size(); i++) {
 			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
 					"tl" + listTaolu.get(i).getVid());
-			InputMediaPhoto photo = new InputMediaPhoto(listTaolu.get(i).getCover());
+			// 检查封面是否为空
+			String cover = listTaolu.get(i).getCover();
+			if (cover == null || cover.trim().isEmpty()) {
+				cover = "https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56";
+			}
+			InputMediaPhoto photo = new InputMediaPhoto(cover);
 
 			String tt = listTaolu.get(i).getTitle().split("_")[0];
 
@@ -2391,20 +2356,22 @@ public class RobotServiceImpl implements RobotService {
 		WaiwangVideoExample exampleWaiwang = new WaiwangVideoExample();
 		cn.exrick.manager.pojo.WaiwangVideoExample.Criteria criteriaWw = exampleWaiwang.createCriteria();
 		if (text != null) {
-			if (text.indexOf(" ") != -1) {
-				String[] textArr = text.split(" ");
-				for (String item : textArr) {
-					criteriaWw.andTitleLike("%" + item + "%");
-
+			if (!text.trim().isEmpty()) {
+					String[] textArr = text.trim().split("\\p{javaWhitespace}+");
+					for (String item : textArr) {
+						if (item.length() > 0) {
+							criteriaWw.andTitleLike("%" + item + "%");
+						}
+					}
 				}
-			} else
-				criteriaWw.andTitleLike("%" + text + "%");
 
 		}
 		criteriaWw.andTitleNotEqualTo("");
 		criteriaWw.andDurationGreaterThan("600");
+		// 排除 friendindex = 1 的记录
+		criteriaWw.andFriendindexNotEqualTo(1);
 		exampleWaiwang.setOrderByClause("dt desc");
-		PageHelper.startPage(1, 1000);
+		PageHelper.startPage(1, 10000);
 		List<WaiwangVideo> listWaiwang = waiwangVideoMapper.selectByExample(exampleWaiwang);
 		PageInfo<WaiwangVideo> pitgInfo = new PageInfo<WaiwangVideo>(listWaiwang);
 
@@ -2451,12 +2418,14 @@ public class RobotServiceImpl implements RobotService {
 		if (SearchFactory.isIsearchAvailable()) {
 			try {
 				Isearch search = new Isearch();
-				search.andCategory("DM", "t.me");
+				// DM字段过滤已移除
 				search.andText("TX", text);
+				// 使用 notIndexedText 过滤 CH 字段
+				search.andNotIndexedText("CH", "kaikai");
 				Calendar calendar = Calendar.getInstance();
 				calendar.add(Calendar.YEAR, -10);
 				search.greatThan("RQ", calendar.getTimeInMillis());
-				search.setMaxResults(1000);
+				search.setMaxResults(10000);
 				hits = search.queryHits();
 			} catch (Exception e1) {
 				log.warn("Isearch 搜索失败: {}", e1.getMessage());
@@ -2593,13 +2562,61 @@ public class RobotServiceImpl implements RobotService {
 		SearchResultDTO result = new SearchResultDTO(keyword);
 		
 		// 并行查询提高效率
-		result.setZmqVideos(searchZmq(keyword, page, pageSize));
-		result.setWaiwang2Videos(searchWaiwang2(keyword, page, pageSize));
-		result.setWanwuVideos(searchWanwu(keyword, page, pageSize));
-		result.setTaolu3Videos(searchTaolu3(keyword, page, pageSize));
-		result.setWaiwangVideos(searchWaiwang(keyword, page, pageSize));
+		// 使用 new ArrayList<>() 包裉，避免 PageHelper 返回的 Page 对象导致 Dubbo hessian2 序列化问题
+		result.setZmqVideos(new ArrayList<>(searchZmq(keyword, page, pageSize)));
+		result.setWaiwang2Videos(new ArrayList<>(searchWaiwang2(keyword, page, pageSize)));
+		result.setWanwuVideos(new ArrayList<>(searchWanwu(keyword, page, pageSize)));
+		result.setTaolu3Videos(new ArrayList<>(searchTaolu3(keyword, page, pageSize)));
+		result.setWaiwangVideos(new ArrayList<>(searchWaiwang(keyword, page, pageSize)));
 		
+		// isearch频道搜索（CH=kaikai）
+		result.setChannelVideos(searchChannelVideos(keyword));
+		
+		log.info("searchAll 完成: keyword={}, 总结果数={}", keyword, result.getTotalCount());
 		return result;
+	}
+	
+	/**
+	 * 搜索频道视频（isearch）
+	 * 只返回 CH 为 "kaikai" 的结果
+	 */
+	private List<Map<String, Object>> searchChannelVideos(String keyword) {
+		List<Map<String, Object>> channelVideos = new ArrayList<>();
+		
+		if (!SearchFactory.isIsearchAvailable()) {
+			log.info("搜索引擎不可用，跳过频道搜索");
+			return channelVideos;
+		}
+		
+		try {
+			Isearch search = new Isearch();
+			search.andText("TX", keyword);
+			// 使用 notIndexedText 过滤 CH 字段，只返回 kaikai 频道
+			search.andNotIndexedText("CH", "kaikai");
+			Calendar calendar = Calendar.getInstance();
+			calendar.add(Calendar.YEAR, -10);
+			search.greatThan("RQ", calendar.getTimeInMillis());
+			search.setMaxResults(10000);
+			
+			Hits hits = search.queryHits();
+			if (hits != null) {
+				for (int i = 0; i < hits.size(); i++) {
+					Hit hit = hits.get(i);
+					Map<String, Object> video = new HashMap<>();
+					video.put("id", hit.getId());
+					video.put("title", hit.getArticle().getString("TX"));
+					video.put("channel", hit.getArticle().getString("CH"));
+					video.put("duration", hit.getArticle().getString("CC"));
+					video.put("url", hit.getArticle().getString("UR"));
+					channelVideos.add(video);
+				}
+			}
+			log.info("频道搜索完成: keyword={}, 结果数={}", keyword, channelVideos.size());
+		} catch (Exception e) {
+			log.warn("频道搜索失败: {}", e.getMessage());
+		}
+		
+		return channelVideos;
 	}
 	
 	@Override
@@ -2608,21 +2625,23 @@ public class RobotServiceImpl implements RobotService {
 		ZmqVideoExample.Criteria criteria = example.createCriteria();
 		
 		if (keyword != null && !keyword.isEmpty()) {
-			if (keyword.contains(" ")) {
-				String[] keywords = keyword.split(" ");
-				for (String k : keywords) {
+			if (!keyword.trim().isEmpty()) {
+			String[] keywords = keyword.trim().split("\\p{javaWhitespace}+");
+			for (String k : keywords) {
+				if (k.length() > 0) {
 					criteria.andTitleLike("%" + k + "%");
 				}
-			} else {
-				criteria.andTitleLike("%" + keyword + "%");
 			}
+		}
 		}
 		
 		criteria.andDurationIsNotNull();
-		example.setOrderByClause("vid desc");
+		example.setOrderByClause("addtime desc");
 		
 		PageHelper.startPage(page, pageSize);
-		return zmqVideoMapper.selectByExample(example);
+		List<ZmqVideo> result = zmqVideoMapper.selectByExample(example);
+		log.info("ZM搜索: keyword={}, 结果数={}", keyword, result.size());
+		return result;
 	}
 	
 	@Override
@@ -2631,21 +2650,25 @@ public class RobotServiceImpl implements RobotService {
 		Waiwang2VideoExample.Criteria criteria = example.createCriteria();
 		
 		if (keyword != null && !keyword.isEmpty()) {
-			if (keyword.contains(" ")) {
-				String[] keywords = keyword.split(" ");
-				for (String k : keywords) {
+			if (!keyword.trim().isEmpty()) {
+			String[] keywords = keyword.trim().split("\\p{javaWhitespace}+");
+			for (String k : keywords) {
+				if (k.length() > 0) {
 					criteria.andTitleLike("%" + k + "%");
 				}
-			} else {
-				criteria.andTitleLike("%" + keyword + "%");
 			}
+		}
 		}
 		
 		criteria.andDurationIsNotNull();
+		// 排除 pantag 不含 http 的结果
+		criteria.andPantagLike("%http%");
 		example.setOrderByClause("dt desc");
 		
 		PageHelper.startPage(page, pageSize);
-		return waiwang2VideoMapper.selectByExample(example);
+		List<Waiwang2Video> result = waiwang2VideoMapper.selectByExample(example);
+		log.info("BC搜索: keyword={}, 结果数={}", keyword, result.size());
+		return result;
 	}
 	
 	@Override
@@ -2654,20 +2677,22 @@ public class RobotServiceImpl implements RobotService {
 		WanwuVideoExample.Criteria criteria = example.createCriteria();
 		
 		if (keyword != null && !keyword.isEmpty()) {
-			if (keyword.contains(" ")) {
-				String[] keywords = keyword.split(" ");
-				for (String k : keywords) {
+			if (!keyword.trim().isEmpty()) {
+			String[] keywords = keyword.trim().split("\\p{javaWhitespace}+");
+			for (String k : keywords) {
+				if (k.length() > 0) {
 					criteria.andTitleLike("%" + k + "%");
 				}
-			} else {
-				criteria.andTitleLike("%" + keyword + "%");
 			}
 		}
+		}
 		
-		example.setOrderByClause("sales desc");
+		example.setOrderByClause("addtime desc");
 		
 		PageHelper.startPage(page, pageSize);
-		return wanwuVideoMapper.selectByExample(example);
+		List<WanwuVideo> result = wanwuVideoMapper.selectByExample(example);
+		log.info("WW搜索: keyword={}, 结果数={}", keyword, result.size());
+		return result;
 	}
 	
 	@Override
@@ -2676,20 +2701,22 @@ public class RobotServiceImpl implements RobotService {
 		Taolu3VideoExample.Criteria criteria = example.createCriteria();
 		
 		if (keyword != null && !keyword.isEmpty()) {
-			if (keyword.contains(" ")) {
-				String[] keywords = keyword.split(" ");
-				for (String k : keywords) {
+			if (!keyword.trim().isEmpty()) {
+			String[] keywords = keyword.trim().split("\\p{javaWhitespace}+");
+			for (String k : keywords) {
+				if (k.length() > 0) {
 					criteria.andTitleLike("%" + k + "%");
 				}
-			} else {
-				criteria.andTitleLike("%" + keyword + "%");
 			}
 		}
+		}
 		
-		example.setOrderByClause("vid desc");
+		example.setOrderByClause("dt desc");
 		
 		PageHelper.startPage(page, pageSize);
-		return taolu3VideoMapper.selectByExample(example);
+		List<Taolu3Video> result = taolu3VideoMapper.selectByExample(example);
+		log.info("TL搜索: keyword={}, 结果数={}", keyword, result.size());
+		return result;
 	}
 	
 	@Override
@@ -2698,32 +2725,72 @@ public class RobotServiceImpl implements RobotService {
 		WaiwangVideoExample.Criteria criteria = example.createCriteria();
 		
 		if (keyword != null && !keyword.isEmpty()) {
-			if (keyword.contains(" ")) {
-				String[] keywords = keyword.split(" ");
-				for (String k : keywords) {
+			if (!keyword.trim().isEmpty()) {
+			String[] keywords = keyword.trim().split("\\p{javaWhitespace}+");
+			for (String k : keywords) {
+				if (k.length() > 0) {
 					criteria.andTitleLike("%" + k + "%");
 				}
-			} else {
-				criteria.andTitleLike("%" + keyword + "%");
 			}
+		}
 		}
 		
 		criteria.andTitleNotEqualTo("");
 		criteria.andDurationGreaterThan("600");
+		// 排除 friendindex = 1 的记录
+		criteria.andFriendindexNotEqualTo(1);
 		example.setOrderByClause("dt desc");
 		
 		PageHelper.startPage(page, pageSize);
-		return waiwangVideoMapper.selectByExample(example);
+		List<WaiwangVideo> result = waiwangVideoMapper.selectByExample(example);
+		log.info("TG搜索: keyword={}, 结果数={}", keyword, result.size());
+		return result;
 	}
 	
 	@Override
 	public List<Waiwang2Video> getLatestWorks(int page, int pageSize) {
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andDurationIsNotNull();
+		Waiwang2VideoExample.Criteria criteria = example.createCriteria();
+		criteria.andDurationIsNotNull();
+		// 排除 pantag 不含 http 的结果
+		criteria.andPantagLike("%http%");
 		example.setOrderByClause("dt desc");
 		
 		PageHelper.startPage(page, pageSize);
 		return waiwang2VideoMapper.selectByExample(example);
+	}
+
+	/**
+	 * 检查每日提取次数限制
+	 * @param identifier 用户标识
+	 * @param topicok 1=VIP群, 4=GroupNotepadBot
+	 * @return true=允许提取, false=已达上限
+	 */
+	private boolean checkDailyExtractLimit(String identifier, int topicok) {
+		if (topicok != 1 && topicok != 4) {
+			return true;
+		}
+		String today = new SimpleDateFormat("yyyyMMdd").format(new Date());
+		String key = "extract:daily:" + identifier + ":" + today;
+		String count = jedisClient.get(key);
+		int current = count == null ? 0 : Integer.parseInt(count);
+		if (current >= 1000000) {
+			System.out.println("[ExtractLimit] " + identifier + " 今日提取次数已达上限(1000000次)，拒绝提取");
+			return false;
+		}
+		jedisClient.incr(key);
+		try {
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+			Date now = new Date();
+			Date midnight = sdf.parse(sdf.format(now));
+			midnight = new Date(midnight.getTime() + 24 * 60 * 60 * 1000);
+			long ttl = (midnight.getTime() - now.getTime()) / 1000;
+			jedisClient.expire(key, (int) ttl);
+		} catch (Exception e) {
+			jedisClient.expire(key, 86400);
+		}
+		System.out.println("[ExtractLimit] " + identifier + " 今日提取次数: " + (current + 1) + "/1000000");
+		return true;
 	}
 
 }

@@ -377,7 +377,7 @@ QQ Bot 限制同一消息 ID 1小时内最多回复 4 次。如果返回太多�
 
 ## 多机器人架构
 
-系统配置了 **5 个 QQ 机器人**实现负载均衡：
+系统配置了 **29 个 QQ 机器人**实现负载均衡：
 
 | 机器人 | AppId | 用途 |
 |--------|-------|------|
@@ -386,6 +386,32 @@ QQ Bot 限制同一消息 ID 1小时内最多回复 4 次。如果返回太多�
 | 机器人3 | 1903768319 | 用户分配 |
 | 机器人4 | 1903777125 | 用户分配 |
 | 机器人5 | 1903781933 | 用户分配 |
+| 机器人6 | 1903828854 | 用户分配 |
+| 机器人7 | 1903828836 | 用户分配 |
+| 机器人8 | 1903778154 | 用户分配 |
+| 机器人9 | 1903830381 | 用户分配 |
+| 机器人10 | 1903830571 | 用户分配 |
+| 机器人11 | 1903837008 | 用户分配 |
+| 机器人12 | 1903849229 | 用户分配 |
+| 机器人13 | 1903849797 | 用户分配 |
+| 机器人14 | 1903871246 | 用户分配 |
+| 机器人15 | 1903900136 | 用户分配 |
+| 机器人16 | 1903918975 | 用户分配 |
+| 机器人17 | 1903918989 | 用户分配 |
+| 机器人18 | 1903922462 | 用户分配 |
+| 机器人19 | 1903922103 | 用户分配 |
+| 机器人20 | 1903919041 | 用户分配 |
+| 机器人21 | 1903970085 | 用户分配 |
+| 机器人22 | 1903974632 | 用户分配 |
+| 机器人23 | 1903983558 | 用户分配 |
+| 机器人24 | 1904003772 | 用户分配 |
+| 机器人25 | 1904036064 | 用户分配 |
+| 机器人26 | 1904044034 | 用户分配 |
+| 机器人27 | 1904048000 | 用户分配 |
+| 机器人28 | 1904050561 | 用户分配 |
+| 机器人29 | 1904050908 | 用户分配 |
+| 机器人30 | 1904055337 | 用户分配 |
+| 机器人31 | 1904055039 | 用户分配 |
 
 配置文件：`/home/www/tomcat/apache-tomcat-9.0.102/webapps/ROOT/WEB-INF/classes/qqbot_bots.json`
 
@@ -504,6 +530,132 @@ def send_secure_file_to_qq(user_id, file_path, title="", safe_name=None, app_id=
 - **新格式（15字段）**：包含机器人配置
   - 使用指定机器人发送
   - 推荐方式
+
+## 近期更新记录
+
+### 2026-04-12 GroupNotepadBot 功能增强
+
+#### 1. 新增 GroupNotepadBot（群记事本机器人）
+
+**Token**: `8766973549:AAFKJb6cNz3WIB31mdLnsBMxH6s8BVZJdIM`
+**目标群组**: `-1003205013648`
+**主题类型**: `topic=4` (GroupNotepadBot)
+
+**功能特性**:
+- 支持提取命令：`ww/zm/tl/tg/ch/bc` + vid
+- 提取消耗积分：每次扣除 1 积分（tb_wallet 表）
+- 新用户默认积分：5 分
+- 积分不足时提示用户充值
+
+**文件**: `GroupNotepadBot.java`
+
+#### 2. 文件格式变更
+
+| 格式 | 旧 | 新 | 说明 |
+|------|-----|-----|------|
+| 扩展名 | `.html` | `.txt` | 改为纯文本 |
+| 编码 | UTF-8 | UTF-8 with BOM | Windows 记事本兼容 |
+| 换行符 | `\n` | `\r\n` | Windows 换行符 |
+
+**原因**: Windows 记事本默认使用 `\r\n` 作为换行符，只有 UTF-8 BOM + `\r\n` 才能正确显示中文。
+
+#### 3. VIP4 支持 - 转发到指定群组
+
+**配置**:
+- VIP 等级 4 的作品下载后转发到 `-1003205013648`
+- 转发后删除本地文件
+
+**Python 端实现** (`donwloadFileAndSendToUser.py`):
+```python
+if vip == 4:
+    await client.forward_messages(-1003205013648, ...)
+    # 删除本地文件
+```
+
+#### 4. zhindex 客户端选择机制
+
+根据 `info[9]` (zhindex) 选择 Telegram 客户端：
+
+| zhindex | 客户端 | 变量名 |
+|---------|--------|--------|
+| 0 | 默认 | `client` |
+| 1 | 机器人1 | `client1` / `mybot1` |
+| 2 | 机器人2 | `client2` / `mybot2` |
+
+**应用场景**:
+- VIP4 默认使用 `zhindex=0` (默认客户端)
+- VIP1 使用 `zhindex=1` (client1)
+- VIP2 使用 `zhindex=2` (client2)
+
+#### 5. bc 命令修复
+
+**问题**: `bc` 命令提取时查询方式错误，导致找不到数据。
+
+**修复**:
+```java
+// 修复前（错误）
+Waiwang2VideoExample example = new Waiwang2VideoExample();
+example.createCriteria().andVidEqualTo(vid);
+List<Waiwang2Video> videos = waiwang2VideoMapper.selectByExample(example);
+
+// 修复后（正确）
+Waiwang2Video bcVideo = waiwang2VideoMapper.selectByPrimaryKey(Integer.parseInt(vid));
+```
+
+**标题格式**: `title_vid` (如 `视频标题_12345`)
+
+**作者来源**: `nickname` 字段
+
+#### 6. Pantag 过滤
+
+**新增**: 搜索 `waiwang2_video` 时排除 `pantag` 不包含 `"http"` 的结果。
+
+**实现**:
+```java
+criteria.andPantagLike("%http%");  // 排除无效/加密链接
+```
+
+**原因**: `pantag` 字段不含 `"http"` 的行通常是失效链接或加密数据。
+
+#### 7. 文件换行符统一修复
+
+**受影响文件**:
+- `GroupNotepadBot.java` - 搜索生成的 TXT 文件
+- `AsyncEventPublisher.java` - QQ Bot 搜索生成的 TXT 文件
+
+**修改**: 所有 `\n` 改为 `\r\n`
+
+```java
+// 示例
+sb.append("=======================================\r\n");
+sb.append("🔐 作品搜索清单\r\n");
+```
+
+---
+
+## 队列数据格式（15字段）
+
+完整字段说明：
+
+```
+[0]  chatroom      - 用户ID（QQ/Telegram）
+[1]  url           - 文件路径或下载链接
+[2]  title         - 作品标题
+[3]  vid           - 视频ID（记事本任务为 "notebook"）
+[4]  chatid        - 聊天ID（同userId）
+[5]  cover         - 封面URL
+[6]  byString      - 来源标识
+[7]  wpString      - 频道/来源
+[8]  author        - 作者
+[9]  zhindex       - 客户端选择索引 (0=默认, 1=client1, 2=client2)
+[10] vip           - VIP等级 (0-4)
+[11] appId         - QQ机器人AppId
+[12] clientSecret  - QQ机器人密钥
+[13] feijiUsername - 飞机账号（备用）
+[14] feijiPassword - 飞机密码（备用）
+```
+
+---
 
 ## 后续优化建议
 
