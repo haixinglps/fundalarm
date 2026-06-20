@@ -13,6 +13,27 @@
 	<packaging>war</packaging>
 
 	<dependencies>
+		<!-- 强制统一 Jackson 版本，避免传递依赖引入旧版本导致类加载器冲突 -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+			<version>2.17.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>2.17.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-annotations</artifactId>
+			<version>2.17.2</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.datatype</groupId>
+			<artifactId>jackson-datatype-jsr310</artifactId>
+			<version>2.17.2</version>
+		</dependency>
 	
 		<dependency>
 			<groupId>com.zhongsou.search</groupId>
@@ -56,6 +77,11 @@
     <version>1.18.30</version>
     <scope>provided</scope>
 </dependency>
+	  <dependency>
+		<groupId>org.xerial</groupId>
+		<artifactId>sqlite-jdbc</artifactId>
+		<version>3.45.1.0</version>
+	  </dependency>
 	  <dependency>
 		
 		<groupId>com.squareup.okhttp3</groupId>

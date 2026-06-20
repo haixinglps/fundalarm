@@ -82,6 +82,20 @@ import cn.hutool.json.JSONUtil;
 
 @Service
 public class FundServiceImpl implements FundService {
+	// === 日志限流 ===
+	private static final java.util.concurrent.ConcurrentHashMap<String, Long> _logThrottle = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final long _LOG_INTERVAL_MS = 60000;
+
+	private static void rl(String prefix, String msg) {
+		long now = System.currentTimeMillis();
+		Long last = _logThrottle.get(prefix);
+		if (last == null || now - last >= _LOG_INTERVAL_MS) {
+			_logThrottle.put(prefix, now);
+			System.out.println(msg);
+		}
+	}
+	// === 日志限流结束 ===
+
 	private static final Logger log = LoggerFactory.getLogger(FundServiceImpl.class);
 	@Autowired
 	private TbUserMapper tbUserMapper;
@@ -226,7 +240,7 @@ public class FundServiceImpl implements FundService {
 	@Transactional(rollbackFor = { Exception.class })
 	public Integer updateCurrentPrice(String tableName, BigDecimal price, int tag, BigDecimal realbuyprice,
 			BigDecimal money, Fund fundindex, Fund1Gaoduanzhuangbei2Ok fundItem, String lastvalue) {
-		System.out.println("=================tag:" + tag);
+		// System.out.println("=================tag:" + tag);
 		Fund1Gaoduanzhuangbei2OkExample exampleOri = new Fund1Gaoduanzhuangbei2OkExample();
 		String trans = null;
 		int jcTag = 1;
@@ -299,7 +313,7 @@ public class FundServiceImpl implements FundService {
 				if (funditemNext == null) {
 //					return;
 				}
-				System.out.println("=================level:" + level);
+				// System.out.println("=================level:" + level);
 
 				Integer historytag = Integer.valueOf(1);
 				String pk = fundindex.getCode();
@@ -505,7 +519,7 @@ public class FundServiceImpl implements FundService {
 //									String posId = ol.getJSONObject(0).getStr("posId");
 //									if (posId != null && !posId.isEmpty()) {
 //										record5.setFirsttime(posId);
-//										System.out.println("【追涨买入】保存posId: " + posId);
+//										rl("【追涨买入】", "【追涨买入】保存posId: " + posId);
 //									}
 //								} catch (Exception e) {
 //									System.err.println("【追涨买入】提取posId失败: " + e.getMessage());
@@ -903,13 +917,18 @@ public class FundServiceImpl implements FundService {
 								String posId = ol.getJSONObject(0).getStr("posId");
 								if (posId != null && !posId.isEmpty()) {
 									record4.setFirsttime(posId);
-									System.out.println("【补仓买入】保存posId: " + posId);
+									rl("【补仓买入】", "【补仓买入】保存posId: " + posId);
 								}
 							} catch (Exception e) {
 								System.err.println("【补仓买入】提取posId失败: " + e.getMessage());
 							}
 
 							this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record4, example4);
+							// 【建仓重置】清理该档位的旧分批止盈Redis状态，防止新仓位继承旧数据
+							jedisClient.del("batch:sold:" + tableName + ":" + level);
+							jedisClient.del("batch:tp:" + tableName + ":" + level);
+							jedisClient.del("highest:" + tableName + ":" + level);
+							jedisClient.del("buyprice:" + tableName + ":" + level);
 							try {
 								FileUtil.appendUtf8String(
 										dt + "【补仓】买入：" + "  level:" + level + "  " + keyString + "\n----\n",
@@ -1022,14 +1041,14 @@ public class FundServiceImpl implements FundService {
 
 					this.fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(posUpdate, posExample);
 					clearedCount++;
-					System.out.println("【全平事务】清空档位 " + position.getLevel() + " fene=" + position.getFene() + " -> 0");
+					rl("【全平", "【全平事务】清空档位 " + position.getLevel() + " fene=" + position.getFene() + " -> 0");
 				}
-				System.out.println("【全平事务】共清空 " + clearedCount + "/" + duichongList.size() + " 个档位的fene");
-				System.out.println("【全平事务】所有档位fene清空完成");
+				rl("【全平", "【全平事务】共清空 " + clearedCount + "/" + duichongList.size() + " 个档位的fene");
+				rl("【全平", "【全平事务】所有档位fene清空完成");
 
 				// 检查是否已成功全平
 				if (jedisClient.exists(closeAllKey)) {
-					System.out.println("【全平跳过】已处理，档位=" + cw.getLevel());
+					rl("【全平", "【全平跳过】已处理，档位=" + cw.getLevel());
 					return;
 				}
 
@@ -1059,7 +1078,7 @@ public class FundServiceImpl implements FundService {
 				for (int retry = 0; retry < 3 && !success; retry++) {
 					try {
 						if (retry > 0) {
-							System.out.println("【全平重试】第" + retry + "次尝试...");
+							rl("【全平", "【全平重试】第" + retry + "次尝试...");
 							Thread.sleep(1000);
 						}
 
@@ -1070,7 +1089,7 @@ public class FundServiceImpl implements FundService {
 
 						closeResult = this.okxService.trade("/api/v5/trade/close-position", "POST",
 								closeParams.toString());
-						System.out.println("【OKX全平】尝试" + (retry + 1) + "结果：" + closeResult);
+						rl("【OKX全平", "【OKX全平】尝试" + (retry + 1) + "结果：" + closeResult);
 
 						// 使用JSONUtil解析返回码（项目标准方式）
 						if (closeResult != null) {
@@ -1103,14 +1122,14 @@ public class FundServiceImpl implements FundService {
 					// 查询订单状态确认（项目标准做法）
 					String checkKey = "?instId=" + instId;
 					String positionInfo = this.okxService.trade("/api/v5/account/positions" + checkKey, "GET", "");
-					System.out.println("【全平确认】仓位查询：" + positionInfo);
+					rl("【全平", "【全平确认】仓位查询：" + positionInfo);
 
 					jedisClient.setex(closeAllKey, 60, "1");
 					jedisClient.del(closeAllFailKey);
 					jedisClient.del("t:global:order");
 					// 存储成功结果供外层查询
 					jedisClient.setex(closeAllResultKey, 60, "SUCCESS:" + closeResult);
-					System.out.println("【全平成功】" + instId + " 仓位已全部平仓");
+					rl("【全平", "【全平成功】" + instId + " 仓位已全部平仓");
 				} else {
 					int newFailCount = failCount + 1;
 					jedisClient.setex(closeAllFailKey, 300, String.valueOf(newFailCount));
@@ -1199,7 +1218,7 @@ public class FundServiceImpl implements FundService {
 			if (posId != null && !posId.isEmpty() && !"null".equals(posId)) {
 				requestData.put("posId", posId);
 				requestData.put("reduceOnly", true); // 仅减仓
-				System.out.println("【卖出指定posId】posId=" + posId + " 避免FIFO卖出其他仓位");
+				rl("【卖出指定posId】", "【卖出指定posId】posId=" + posId + " 避免FIFO卖出其他仓位");
 			}
 			requestData.put("ordType", ordType);
 

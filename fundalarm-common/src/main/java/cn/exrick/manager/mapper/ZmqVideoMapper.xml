@@ -20,6 +20,8 @@
     <result column="goodtag" jdbcType="INTEGER" property="goodtag" />
     <result column="urlkey2" jdbcType="VARCHAR" property="urlkey2" />
     <result column="uptag3" jdbcType="INTEGER" property="uptag3" />
+    <result column="detailurl" jdbcType="VARCHAR" property="detailurl" />
+    <result column="dt" jdbcType="VARCHAR" property="dt" />
   </resultMap>
   <sql id="Example_Where_Clause">
     <where>
@@ -80,8 +82,8 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    vid, title, duration, price, addtime, url, cover, tria, type, author, yunpankey, 
-    uptag, uptag13681594428, urlid, sales, goodtag, urlkey2, uptag3
+    vid, title, duration, price, addtime, dt, url, cover, tria, type, author, yunpankey, 
+    uptag, uptag13681594428, urlid, sales, goodtag, urlkey2, uptag3, detailurl
   </sql>
   <select id="selectByExample" parameterType="cn.exrick.manager.pojo.ZmqVideoExample" resultMap="BaseResultMap">
     select
@@ -119,14 +121,14 @@
       cover, tria, type, 
       author, yunpankey, uptag, 
       uptag13681594428, urlid, sales, 
-      goodtag, urlkey2, uptag3
+      goodtag, urlkey2, uptag3, detailurl
       )
     values (#{vid,jdbcType=INTEGER}, #{title,jdbcType=VARCHAR}, #{duration,jdbcType=VARCHAR}, 
       #{price,jdbcType=INTEGER}, #{addtime,jdbcType=VARCHAR}, #{url,jdbcType=VARCHAR}, 
       #{cover,jdbcType=VARCHAR}, #{tria,jdbcType=VARCHAR}, #{type,jdbcType=INTEGER}, 
       #{author,jdbcType=INTEGER}, #{yunpankey,jdbcType=VARCHAR}, #{uptag,jdbcType=INTEGER}, 
       #{uptag13681594428,jdbcType=INTEGER}, #{urlid,jdbcType=VARCHAR}, #{sales,jdbcType=INTEGER}, 
-      #{goodtag,jdbcType=INTEGER}, #{urlkey2,jdbcType=VARCHAR}, #{uptag3,jdbcType=INTEGER}
+      #{goodtag,jdbcType=INTEGER}, #{urlkey2,jdbcType=VARCHAR}, #{uptag3,jdbcType=INTEGER}, #{detailurl,jdbcType=VARCHAR}
       )
   </insert>
   <insert id="insertSelective" parameterType="cn.exrick.manager.pojo.ZmqVideo">
@@ -186,6 +188,9 @@
       <if test="uptag3 != null">
         uptag3,
       </if>
+      <if test="detailurl != null">
+        detailurl,
+      </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
       <if test="vid != null">
@@ -241,6 +246,9 @@
       </if>
       <if test="uptag3 != null">
         #{uptag3,jdbcType=INTEGER},
+      </if>
+      <if test="detailurl != null">
+        #{detailurl,jdbcType=VARCHAR},
       </if>
     </trim>
   </insert>
@@ -307,6 +315,9 @@
       <if test="record.uptag3 != null">
         uptag3 = #{record.uptag3,jdbcType=INTEGER},
       </if>
+      <if test="record.detailurl != null">
+        detailurl = #{record.detailurl,jdbcType=VARCHAR},
+      </if>
     </set>
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
@@ -331,7 +342,8 @@
       sales = #{record.sales,jdbcType=INTEGER},
       goodtag = #{record.goodtag,jdbcType=INTEGER},
       urlkey2 = #{record.urlkey2,jdbcType=VARCHAR},
-      uptag3 = #{record.uptag3,jdbcType=INTEGER}
+      uptag3 = #{record.uptag3,jdbcType=INTEGER},
+      detailurl = #{record.detailurl,jdbcType=VARCHAR}
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
     </if>
@@ -390,6 +402,9 @@
       <if test="uptag3 != null">
         uptag3 = #{uptag3,jdbcType=INTEGER},
       </if>
+      <if test="detailurl != null">
+        detailurl = #{detailurl,jdbcType=VARCHAR},
+      </if>
     </set>
     where vid = #{vid,jdbcType=INTEGER}
   </update>
@@ -411,7 +426,8 @@
       sales = #{sales,jdbcType=INTEGER},
       goodtag = #{goodtag,jdbcType=INTEGER},
       urlkey2 = #{urlkey2,jdbcType=VARCHAR},
-      uptag3 = #{uptag3,jdbcType=INTEGER}
+      uptag3 = #{uptag3,jdbcType=INTEGER},
+      detailurl = #{detailurl,jdbcType=VARCHAR}
     where vid = #{vid,jdbcType=INTEGER}
   </update>
 </mapper>

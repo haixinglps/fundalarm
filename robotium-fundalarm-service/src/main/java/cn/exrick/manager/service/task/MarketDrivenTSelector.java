@@ -525,6 +525,12 @@ public class MarketDrivenTSelector {
                 price.multiply(new BigDecimal("0.998")) : price.multiply(new BigDecimal("1.003"));
             this.holdMinutes = 10;
         }
+        
+        public TDirection getDirection() { return direction; }
+        public BigDecimal getTarget() { return target; }
+        public BigDecimal getStop() { return stop; }
+        public int getHoldMinutes() { return holdMinutes; }
+        public BigDecimal getEntryPrice() { return entryPrice; }
     }
     
     @Data

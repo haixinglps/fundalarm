@@ -1005,7 +1005,14 @@ public class RobotServiceImpl implements RobotService {
 			wallets.add(wallet);
 
 		}
-		if (topicok == 0 || topicok == 2)
+		// 提取口令（ww/zm/tl/ch/tg/bc/zb）才检测余额；会员群（386/399）提取不扣余额
+		String pri = "";
+		if (receivedText != null && receivedText.length() >= 2) {
+			pri = receivedText.substring(0, 2);
+		}
+		java.util.List<String> extractCommands = java.util.Arrays.asList("ww", "zm", "tl", "ch", "tg", "bc", "zb");
+		boolean isVipGroup = chatId.equals(-1003867299066L) || chatId.equals(-1003992613609L);
+		if ((topicok == 0 || topicok == 2) && extractCommands.contains(pri) && !isVipGroup)
 			if (wallets.size() == 0 || wallets.get(0).getBalance() == null || wallets.get(0).getBalance() == 0) {
 				replyText += "请找客服qq2167485304充值\n";
 				replyMessage.setText(replyText);
@@ -1044,7 +1051,6 @@ public class RobotServiceImpl implements RobotService {
 //			}
 //			return;
 //		}
-		String pri = receivedText.substring(0, 2);
 		int vid = 0;
 		switch (pri) {
 		case "ww":
@@ -1666,8 +1672,8 @@ public class RobotServiceImpl implements RobotService {
 //		// 4. 可选：设置为引用回复
 //		replyMessage.setReplyToMessageId(receivedMessage.getMessageId());
 		// 开始修改用户余额
-		// 原子扣费，防止并发 Lost Update
-		if (topicok == 0 || topicok == 2) {
+		// 原子扣费，防止并发 Lost Update；会员群（386/399）提取不扣余额
+		if ((topicok == 0 || topicok == 2) && !isVipGroup) {
 			int deductRows = tbWalletMapper.deductBalance("" + uid);
 			if (deductRows == 0) {
 				replyText += "\n⚠️ 余额不足，请联系客服QQ2167485304充值";

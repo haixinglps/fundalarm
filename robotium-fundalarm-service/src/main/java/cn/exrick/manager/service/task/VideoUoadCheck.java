@@ -48,7 +48,7 @@ public class VideoUoadCheck {
 		StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
 		for (StackTraceElement element : stackTrace) {
 			if (element.getClassName().contains("scheduling")) {
-				System.out.println("调度相关: " + element);
+				// System.out.println("调度相关: " + element);
 			}
 		}
 //		while (true) {
@@ -56,7 +56,7 @@ public class VideoUoadCheck {
 		String listKey = "videotoupload";
 		// 获取列表长度
 		long listLength = jedisClient.llen(listKey);
-		System.out.println("列表长度: " + listLength);
+		// System.out.println("列表长度: " + listLength);
 
 		// 遍历列表
 		for (int i = 0; i < listLength; i++) {
@@ -213,6 +213,9 @@ public class VideoUoadCheck {
 							// TODO: handle exception
 						}
 					}
+				} else {
+					// ch 前缀或其他未知类型，数据库无记录，直接丢弃
+					jedisClient.lrem(listKey, 1, item);
 				}
 
 			} catch (Exception e) {

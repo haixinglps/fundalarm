@@ -365,10 +365,23 @@ public class getWanwuPageForApi3vidTaolu {
 
 							String img = cover;
 
-							System.out
-									.println(k + "-" + j + "-m3u8:\t" + videoUrl + "\t" + vid + "\t" + hit + "\t" + tm);
+							// 提取详情页URL
+							String detailUrl = "";
+							Element aTag = link.selectFirst("a");
+							if (aTag != null) {
+								detailUrl = aTag.attr("abs:href");
+								if (detailUrl == null || detailUrl.isEmpty()) {
+									detailUrl = aTag.attr("href");
+									if (detailUrl != null && !detailUrl.startsWith("http")) {
+										detailUrl = "https://www2.zimuquan25.uk" + (detailUrl.startsWith("/") ? "" : "/") + detailUrl;
+									}
+								}
+							}
 
-							m3u8Result.append(vid + "\t" + videoUrl + "\t" + img + "\t" + tm + "\t" + hit);
+							System.out
+									.println(k + "-" + j + "-m3u8:\t" + videoUrl + "\t" + vid + "\t" + hit + "\t" + tm + "\t" + detailUrl);
+
+							m3u8Result.append(vid + "\t" + videoUrl + "\t" + img + "\t" + tm + "\t" + hit + "\t" + detailUrl);
 							String str = m3u8Result.toString();
 							writer.write(str);
 							writerHistory.write(keyString);

@@ -81,6 +81,20 @@ import cn.hutool.json.JSONObject;
 
 @Service
 public class FundServiceKongImpl implements FundKongService {
+	// === 日志限流 ===
+	private static final java.util.concurrent.ConcurrentHashMap<String, Long> _logThrottle = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final long _LOG_INTERVAL_MS = 60000;
+
+	private static void rl(String prefix, String msg) {
+		long now = System.currentTimeMillis();
+		Long last = _logThrottle.get(prefix);
+		if (last == null || now - last >= _LOG_INTERVAL_MS) {
+			_logThrottle.put(prefix, now);
+			System.out.println(msg);
+		}
+	}
+	// === 日志限流结束 ===
+
 	private static final Logger log = LoggerFactory.getLogger(FundServiceKongImpl.class);
 	@Autowired
 	private TbUserMapper tbUserMapper;
@@ -1125,7 +1139,7 @@ public class FundServiceKongImpl implements FundKongService {
 				String closeAllKey = "closeall:done:" + instId;
 				if (jedisClient.exists(closeAllKey)) {
 					// 已全平过，跳过
-					System.out.println("【全平跳过】已处理，档位=" + cw.getLevel());
+					rl("【全平", "【全平跳过】已处理，档位=" + cw.getLevel());
 					return;
 				}
 				
@@ -1136,7 +1150,7 @@ public class FundServiceKongImpl implements FundKongService {
 				closeParams.put("posSide", "long");
 				
 				String closeResult = this.okxService.trade("/api/v5/trade/close-position", "POST", closeParams.toString());
-				System.out.println("【OKX全平】结果：" + closeResult);
+				rl("【OKX全平", "【OKX全平】结果：" + closeResult);
 				
 				// 标记已全平
 				jedisClient.setex(closeAllKey, 60, "1");

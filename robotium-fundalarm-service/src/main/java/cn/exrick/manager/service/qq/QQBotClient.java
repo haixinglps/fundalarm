@@ -38,6 +38,7 @@ public class QQBotClient {
     private volatile boolean ready = false;
     private volatile boolean reconnecting = false;
     private volatile int reconnectAttempts = 0;
+    private volatile Thread heartbeatThread = null;
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY = 5000; // 5秒
     
@@ -153,6 +154,10 @@ public class QQBotClient {
     public void stop() {
         running = false;
         ready = false;
+        if (heartbeatThread != null && heartbeatThread.isAlive()) {
+            heartbeatThread.interrupt();
+            heartbeatThread = null;
+        }
         if (wsClient != null) {
             wsClient.close();
         }
@@ -250,6 +255,10 @@ public class QQBotClient {
                 ready = false;
                 
                 // 清理资源
+                if (heartbeatThread != null && heartbeatThread.isAlive()) {
+                    heartbeatThread.interrupt();
+                    heartbeatThread = null;
+                }
                 if (wsClient != null) {
                     try {
                         wsClient.close();
@@ -480,9 +489,12 @@ public class QQBotClient {
                 .build();
             
             try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
                 boolean success = response.isSuccessful();
                 if (!success) {
-                    log.error("[QQBot] 群回复失败: {}", response.body().string());
+                    log.error("[QQBot] 群回复失败: {}", respBody);
+                } else {
+                    log.info("[QQBot] 群回复响应: {}", respBody);
                 }
                 return success;
             }
@@ -515,9 +527,12 @@ public class QQBotClient {
                 .build();
             
             try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
                 boolean success = response.isSuccessful();
                 if (!success) {
-                    log.error("[QQBot] 私聊回复失败: {}", response.body().string());
+                    log.error("[QQBot] 私聊回复失败: {}", respBody);
+                } else {
+                    log.info("[QQBot] 私聊回复响应: {}", respBody);
                 }
                 return success;
             }
@@ -550,9 +565,12 @@ public class QQBotClient {
                 .build();
             
             try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
                 boolean success = response.isSuccessful();
                 if (!success) {
-                    log.error("[QQBot] 频道回复失败: {}", response.body().string());
+                    log.error("[QQBot] 频道回复失败: {}", respBody);
+                } else {
+                    log.info("[QQBot] 频道回复响应: {}", respBody);
                 }
                 return success;
             }
@@ -586,9 +604,12 @@ public class QQBotClient {
                 .build();
             
             try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
                 boolean success = response.isSuccessful();
                 if (!success) {
-                    log.error("[QQBot] 主动群消息失败: {}", response.body().string());
+                    log.error("[QQBot] 主动群消息失败: {}", respBody);
+                } else {
+                    log.info("[QQBot] 主动群消息响应: {}", respBody);
                 }
                 return success;
             }
@@ -620,9 +641,12 @@ public class QQBotClient {
                 .build();
             
             try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
                 boolean success = response.isSuccessful();
                 if (!success) {
-                    log.error("[QQBot] 主动私聊失败: {}", response.body().string());
+                    log.error("[QQBot] 主动私聊失败: {}", respBody);
+                } else {
+                    log.info("[QQBot] 主动私聊响应: {}", respBody);
                 }
                 return success;
             }
@@ -654,9 +678,12 @@ public class QQBotClient {
                 .build();
             
             try (Response response = httpClient.newCall(request).execute()) {
+                String respBody = response.body().string();
                 boolean success = response.isSuccessful();
                 if (!success) {
-                    log.error("[QQBot] 主动频道消息失败: {}", response.body().string());
+                    log.error("[QQBot] 主动频道消息失败: {}", respBody);
+                } else {
+                    log.info("[QQBot] 主动频道消息响应: {}", respBody);
                 }
                 return success;
             }
@@ -718,7 +745,7 @@ public class QQBotClient {
                 if (!success) {
                     log.error("[QQBot] 发送文件失败: HTTP={}, response={}", response.code(), respBody);
                 } else {
-                    log.info("[QQBot] 发送文件成功: {}", respBody);
+                    log.info("[QQBot] 发送文件响应: {}", respBody);
                 }
                 return success;
             }
@@ -732,7 +759,13 @@ public class QQBotClient {
      * 启动心跳
      */
     private void startHeartbeat(int interval) {
-        new Thread(() -> {
+        // 防止重复启动心跳线程
+        if (heartbeatThread != null && heartbeatThread.isAlive()) {
+            log.warn("[QQBot] 心跳线程已在运行，跳过重复启动");
+            return;
+        }
+        
+        heartbeatThread = new Thread(() -> {
             while (running && wsClient != null && wsClient.isOpen()) {
                 try {
                     Thread.sleep(interval);
@@ -741,12 +774,21 @@ public class QQBotClient {
                     heartbeat.addProperty("op", 1);
                     heartbeat.add("d", gson.toJsonTree(seq));
                     
-                    wsClient.send(heartbeat.toString());
+                    // 双重检查，防止 sleep 期间 wsClient 被置空
+                    if (wsClient != null && wsClient.isOpen()) {
+                        try {
+                            wsClient.send(heartbeat.toString());
+                        } catch (Exception e) {
+                            // send 异常时不中断循环，让 while 条件判断退出
+                        }
+                    }
                 } catch (InterruptedException e) {
                     break;
                 }
             }
-        }, "QQBot-Heartbeat").start();
+            log.info("[QQBot] 心跳线程已退出");
+        }, "QQBot-Heartbeat");
+        heartbeatThread.start();
         log.info("[QQBot] 心跳线程已启动");
     }
     

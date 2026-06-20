@@ -27,4 +27,11 @@ public interface TbWalletMapper {
     int updateByPrimaryKeySelective(TbWallet record);
 
     int updateByPrimaryKey(TbWallet record);
+
+    /**
+     * 原子扣费：余额大于0时减1，并增加version
+     * @param uid 用户UID
+     * @return 影响行数，0表示扣费失败（余额不足或并发冲突）
+     */
+    int deductBalance(@Param("uid") String uid);
 }

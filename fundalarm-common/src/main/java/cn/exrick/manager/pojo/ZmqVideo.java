@@ -14,6 +14,8 @@ public class ZmqVideo implements Serializable {
 
     private String addtime;
 
+    private String dt;
+
     private String url;
 
     private String cover;
@@ -39,6 +41,8 @@ public class ZmqVideo implements Serializable {
     private String urlkey2;
 
     private Integer uptag3;
+
+    private String detailurl;
 
     private static final long serialVersionUID = 1L;
 
@@ -80,6 +84,14 @@ public class ZmqVideo implements Serializable {
 
     public void setAddtime(String addtime) {
         this.addtime = addtime == null ? null : addtime.trim();
+    }
+
+    public String getDt() {
+        return dt;
+    }
+
+    public void setDt(String dt) {
+        this.dt = dt == null ? null : dt.trim();
     }
 
     public String getUrl() {
@@ -186,6 +198,14 @@ public class ZmqVideo implements Serializable {
         this.uptag3 = uptag3;
     }
 
+    public String getDetailurl() {
+        return detailurl;
+    }
+
+    public void setDetailurl(String detailurl) {
+        this.detailurl = detailurl == null ? null : detailurl.trim();
+    }
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
@@ -210,6 +230,7 @@ public class ZmqVideo implements Serializable {
         sb.append(", goodtag=").append(goodtag);
         sb.append(", urlkey2=").append(urlkey2);
         sb.append(", uptag3=").append(uptag3);
+        sb.append(", detailurl=").append(detailurl);
         sb.append(", serialVersionUID=").append(serialVersionUID);
         sb.append("]");
         return sb.toString();

@@ -75,7 +75,7 @@ public class okx {
 		SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
 		format.setTimeZone(TimeZone.getTimeZone("UTC"));
 		String timestamp = format.format(new Date());
-		System.out.println("时间：" + timestamp);
+		// System.out.println("时间：" + timestamp);
 		String sign = "";
 		try {
 			sign = SignatureGenerator.generateSignature(timestamp, method, path, body, apiSecret);
@@ -102,7 +102,7 @@ public class okx {
 			System.out.println("=========网络异常，url:" + url);
 
 		} else {
-			System.out.println(gupiaoRes);
+			// System.out.println(gupiaoRes);
 
 		}
 
@@ -144,9 +144,9 @@ public class okx {
 //		String url = "https://www.okx.com/api/v5/market/history-candles?instId=NOT-USDT-SWAP&bar=1m";
 
 		Map<String, String> headers = new HashMap<String, String>();
-		System.out.println("【OKX】请求URL: " + url);
+		// System.out.println("【OKX】请求URL: " + url);
 		String gupiaoRes = cn.exrick.common.utils.HttpUtil.sendGetWithHeader(url, headers);
-		System.out.println("【OKX】响应: " + (gupiaoRes == null ? "null" : gupiaoRes.substring(0, Math.min(200, gupiaoRes.length()))));
+		// System.out.println("【OKX】响应: " + (gupiaoRes == null ? "null" : gupiaoRes.substring(0, Math.min(200, gupiaoRes.length()))));
 		if (gupiaoRes == null || gupiaoRes.isEmpty()) {
 			System.out.println("【OKX】响应为空，返回null");
 			return null;
@@ -232,8 +232,8 @@ public class okx {
 
 			// 在这里可以保存或输出每个周期的SAR值
 
-			System.out.println(sdf.format(new Date(current.tm)) + "	" + sar + "	" + current.getCjl() + "	"
-					+ current.getClose()); // 假设Candle有getTimestamp()方法
+			// System.out.println(sdf.format(new Date(current.tm)) + "	" + sar + "	" + current.getCjl() + "	"
+			// 		+ current.getClose()); // 假设Candle有getTimestamp()方法
 			current.setSar(sar);
 		}
 		return candles;

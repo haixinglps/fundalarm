@@ -1,5 +1,6 @@
 package cn.exrick.manager.service.stocks;
 
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
@@ -9,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 
 import org.jsoup.Jsoup;
@@ -22,7 +24,18 @@ public class stockhistory {
 	static ThreadSafeFileWriter writerSubject = null;
 	static ThreadSafeFileWriter writerStock = null;
 	static ThreadSafeFileWriter err = null;
-	static String token = "Bearer eyJhbGciOiJIUzUxMiJ9.eyJsb2dpbl91c2VyX2tleSI6ImFwcDo0NTg1MTI6MWQ5NDc5MjUtZTc4ZS00YTIzLTkwZGUtNDAzMGE4NmQyOTExIn0.sXp4wPqyu8znmqqV7vjM6zX4FI9uh4fWdcE6_0rrOldbg61TO2o_yQ7OiloLk8dmtL-7R7F-9xoYrMS_c-xEVw";
+	static String token = loadToken();
+	
+	static String loadToken() {
+		Properties props = new Properties();
+		try {
+			props.load(new FileInputStream("/home/www/stock/stock_config.properties"));
+			return props.getProperty("api.token", "");
+		} catch (IOException e) {
+			System.err.println("加载配置文件失败: " + e.getMessage());
+			return "";
+		}
+	}
 
 	static String days = "0";
 

@@ -114,8 +114,23 @@ public class DynamicExcelFupan2 {
 					// 创建表头
 //				createHeaderRow(sheet, new String[] { "概念", "类型", "子分类", "股票" });
 
+					// 创建 CellStyle（每个 Workbook 只创建一次）
+					CellStyle redStyle = workbook.createCellStyle();
+					XSSFColor customRed = new XSSFColor(new java.awt.Color(254, 84, 73));
+					((XSSFCellStyle) redStyle).setFillForegroundColor(customRed);
+					redStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+					CellStyle greenStyle = workbook.createCellStyle();
+					XSSFColor customGreen = new XSSFColor(new java.awt.Color(144, 238, 144));
+					((XSSFCellStyle) greenStyle).setFillForegroundColor(customGreen);
+					greenStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+
+					CellStyle centerStyle = workbook.createCellStyle();
+					centerStyle.setAlignment(HorizontalAlignment.CENTER);
+					centerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
 					// 填充数据
-					fillData(j, sheet, root, workbook);
+					fillData(j, sheet, root, workbook, redStyle, greenStyle, centerStyle);
 
 					// 保存文件
 
@@ -235,10 +250,11 @@ public class DynamicExcelFupan2 {
 	}
 
 	private static int fillData(Integer index, Sheet sheet, java.util.List<StockDataHistory> stocks,
-			Workbook workbook) {
+			Workbook workbook, CellStyle redStyle, CellStyle greenStyle, CellStyle centerStyle) {
 
 		if (stocks.size() == 0)
 			return 0;
+		
 		StockDataWithBLOBs baseInfo = service.getStockData(stocks.get(0).getStocknumber());
 		// 提取历史题材：
 		String subjes = baseInfo.getSubjectcachevos();
@@ -333,27 +349,14 @@ public class DynamicExcelFupan2 {
 			String dtStr = sdf.format(tm);
 
 			BigDecimal last = stocks.get(j - 1).getAmount();
-			CellStyle style2 = workbook.createCellStyle();
-			XSSFColor customRed = new XSSFColor(new java.awt.Color(254, 84, 73));
-			((XSSFCellStyle) style2).setFillForegroundColor(customRed);
-			style2.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-			CellStyle style3 = workbook.createCellStyle();
-			XSSFColor customGree = new XSSFColor(new java.awt.Color(144, 238, 144));
-			((XSSFCellStyle) style3).setFillForegroundColor(customGree);
-			style3.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-
-			CellStyle style4 = workbook.createCellStyle();
-			style4.setAlignment(HorizontalAlignment.CENTER);
-			style4.setVerticalAlignment(VerticalAlignment.CENTER);
-
+			// 使用缓存的 CellStyle，避免超过 64000 限制
 			for (int i = 0; i <= 6; i++) {
 				Row row = sheet.getRow(currentRow + i);
 				if (i == 0) {
 
 					Cell cell = row.createCell(2 + j);
 					cell.setCellValue(subjectString);
-					cell.setCellStyle(style4);
+					cell.setCellStyle(centerStyle);
 
 				} else if (i == 2)
 					row.createCell(2 + j).setCellValue("周" + (week == 7 ? "日" : week));
@@ -369,14 +372,14 @@ public class DynamicExcelFupan2 {
 //						CellStyle style1 = workbook.createCellStyle();
 //						style1.setFillForegroundColor(IndexedColors.RED1.getIndex());
 //						style1.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-						cell.setCellStyle(style2);
+						cell.setCellStyle(redStyle);
 
 					} else {
 						// 方法1：使用预定义红色
 //						CellStyle style1 = workbook.createCellStyle();
 //						style1.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
 //						style1.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-						cell.setCellStyle(style3);
+						cell.setCellStyle(greenStyle);
 					}
 
 				} else if (i == 6) {
@@ -388,14 +391,14 @@ public class DynamicExcelFupan2 {
 //						CellStyle style1 = workbook.createCellStyle();
 //						style1.setFillForegroundColor(IndexedColors.RED1.getIndex());
 //						style1.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-						cell.setCellStyle(style2);
+						cell.setCellStyle(redStyle);
 
 					} else {
 						// 方法1：使用预定义红色
 //						CellStyle style1 = workbook.createCellStyle();
 //						style1.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
 //						style1.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-						cell.setCellStyle(style3);
+						cell.setCellStyle(greenStyle);
 					}
 
 				}

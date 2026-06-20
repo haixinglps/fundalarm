@@ -41,16 +41,28 @@ public class UrlValidator {
 	}
 
 	public static boolean validateWithFFmpeg(String rtmpUrl) {
+		Process process = null;
 		try {
-			ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-i", rtmpUrl, "-t", "5", "-f", "null", "-");
-			Process process = pb.start();
+			ProcessBuilder pb = new ProcessBuilder("ffmpeg", "-i", rtmpUrl, "-t", "2", "-f", "null", "-");
+			pb.redirectErrorStream(true);
+			process = pb.start();
 
-			// 读取错误输出流（FFmpeg输出到stderr）
-			BufferedReader errorReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+			final Process p = process;
+			// 3秒超时守护线程
+			new Thread(() -> {
+				try {
+					Thread.sleep(3000);
+					if (p.isAlive()) {
+						p.destroyForcibly();
+					}
+				} catch (InterruptedException ignored) {}
+			}).start();
 
+			// 读取输出流
+			BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 			String line;
 			boolean hasStream = false;
-			while ((line = errorReader.readLine()) != null) {
+			while ((line = reader.readLine()) != null) {
 				if (line.contains("Stream") || line.contains("Duration")) {
 					hasStream = true;
 					break;
@@ -62,6 +74,10 @@ public class UrlValidator {
 
 		} catch (Exception e) {
 			return false;
+		} finally {
+			if (process != null && process.isAlive()) {
+				process.destroyForcibly();
+			}
 		}
 	}
 

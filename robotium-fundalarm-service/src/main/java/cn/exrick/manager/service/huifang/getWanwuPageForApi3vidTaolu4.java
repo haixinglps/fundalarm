@@ -371,9 +371,11 @@ public class getWanwuPageForApi3vidTaolu4 {
 
 							// String img = cover;
 
-							System.out.println(k + "-" + j + "-m3u8:\t" + videoUrl + "\t" + vid + "\t" + tm);
+							String detailUrl = articleUrlString;
 
-							m3u8Result.append(vid + "\t" + videoUrl + "\t" + "" + "\t" + tm + "\t" + 0);
+							System.out.println(k + "-" + j + "-m3u8:\t" + videoUrl + "\t" + vid + "\t" + tm + "\t" + detailUrl);
+
+							m3u8Result.append(vid + "\t" + videoUrl + "\t" + "" + "\t" + tm + "\t" + 0 + "\t" + detailUrl);
 							String str = m3u8Result.toString();
 							writer.write(str);
 							writerHistory.write(keyString);

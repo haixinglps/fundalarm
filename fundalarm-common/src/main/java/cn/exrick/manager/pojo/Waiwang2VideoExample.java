@@ -904,6 +904,11 @@ public class Waiwang2VideoExample {
 			return (Criteria) this;
 		}
 
+		public Criteria andPantagLike(String value) {
+			addCriterion("pantag like", value, "pantag");
+			return (Criteria) this;
+		}
+
 		public Criteria andPantagNotLike(String value) {
 			addCriterion("pantag not like", value, "pantag");
 			return (Criteria) this;

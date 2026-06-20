@@ -137,5 +137,13 @@ public interface RobotService {
 	 * @return 结果列表
 	 */
 	List<Waiwang2Video> getLatestWorks(int page, int pageSize);
+	
+	/**
+	 * 处理 zb 直播录制指令（查库/调Python → 排重 → 推luzhi队列）
+	 * @param shortId 主播 shortId
+	 * @param identifier 用户标识
+	 * @return 处理结果提示文本
+	 */
+	String handleZhiboCommand(int shortId, String identifier);
 
 }

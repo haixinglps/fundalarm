@@ -21,6 +21,10 @@ public class TbWallet implements Serializable {
 
     private String nickname;
 
+    private Integer vip;
+
+    private Date vidEndTime;
+
     @ApiModelProperty(value = "小飞机网盘用户名")
     private String feijiUsername;
 
@@ -83,6 +87,22 @@ public class TbWallet implements Serializable {
 
     public void setNickname(String nickname) {
         this.nickname = nickname == null ? null : nickname.trim();
+    }
+
+    public Integer getVip() {
+        return vip;
+    }
+
+    public void setVip(Integer vip) {
+        this.vip = vip;
+    }
+
+    public Date getVidEndTime() {
+        return vidEndTime;
+    }
+
+    public void setVidEndTime(Date vidEndTime) {
+        this.vidEndTime = vidEndTime;
     }
 
     public String getFeijiUsername() {

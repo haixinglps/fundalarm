@@ -41,6 +41,22 @@ import redis.clients.jedis.Tuple;;
 
 @Component
 public class FundPriceUpdate2 {
+	// === 日志限流：OKX高频日志每分钟最多打印一次 ===
+	private static final java.util.concurrent.ConcurrentHashMap<String, Long> _logThrottle = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final long _LOG_INTERVAL_MS = 60000;
+
+	private static boolean rl(String prefix, String msg) {
+		long now = System.currentTimeMillis();
+		Long last = _logThrottle.get(prefix);
+		if (last == null || now - last >= _LOG_INTERVAL_MS) {
+			_logThrottle.put(prefix, now);
+			System.out.println(msg);
+			return true;
+		}
+		return false;
+	}
+	// === 日志限流结束 ===
+
 
 //	headers.set("OK-ACCESS-KEY", okxConfig.getApikey());
 //    headers.set("OK-ACCESS-SIGN", sign.getSign());
@@ -105,7 +121,7 @@ public class FundPriceUpdate2 {
 			BigDecimal maxP = new BigDecimal("0");
 //		for (String tableName : tableNames) {
 			String tableName = fund.getPlantable();
-			// System.out.println("开始处理：" + tableName);
+			// rl("开始处理：", "开始处理：" + tableName);
 
 			String urla = "https://www.glpomelo.cn/data/kpi_analysis";
 			Map<String, String> data = new HashMap<String, String>();
@@ -135,7 +151,7 @@ public class FundPriceUpdate2 {
 				// "------------------------");
 				// System.out.println(resultStringa);
 				if (resultStringa == null) {
-					System.out.println("网络异常，url:" + urla);
+					rl("网络异常，url:", "网络异常，url:" + urla);
 					alarmPlayer.playAlarm2(1);
 					jedisClient.setex("fundana_" + fund.getCode(), 86400, "1");
 //				continue;
@@ -143,7 +159,7 @@ public class FundPriceUpdate2 {
 
 					JSONObject fenxidata = new JSONObject(resultStringa);
 					if (!fenxidata.getStr("status").contentEquals("success")) {
-						System.out.println("server 异常，url:" + urla);
+						rl("server 异常，url:", "server 异常，url:" + urla);
 						jedisClient.setex("fundana_" + fund.getCode(), 86400, "1");
 					} else {
 //				kpi_fallAvgEveryDay
@@ -285,7 +301,7 @@ public class FundPriceUpdate2 {
 					sinaheader.put("Host", "price.btcfans.com");
 					String gupiaoRes = cn.exrick.common.utils.HttpUtil.sendGetWithHeader(url, sinaheader);
 					if (gupiaoRes == null) {
-						System.out.println("=========网络异常，url:" + url);
+						rl("=========网络异常，url:", "=========网络异常，url:" + url);
 						alarmPlayer.playAlarm2(1);
 						continue;
 					}
@@ -375,7 +391,7 @@ public class FundPriceUpdate2 {
 						headers.put("Accept-Encoding", "gzip, deflate, br, zstd");
 						headers.put("Cache-Control", "max-age=0");
 
-						System.out.println("------------cookie--------------");// .cookies(ck)
+						rl("------------c", "------------cookie--------------");// .cookies(ck)
 //						System.out.println(ck);
 						try {
 							HttpsUrlValidator.trustAllHttpsCertificates();
@@ -396,7 +412,7 @@ public class FundPriceUpdate2 {
 								String[] ckStringsRes = resCookie.split("; ");
 								for (String ckitemRes : ckStringsRes) {
 									if (ckitemRes != null && !ckitemRes.equals("")) {
-										System.out.println("set-cookie:" + ckitemRes);
+										rl("set-cookie:", "set-cookie:" + ckitemRes);
 										if (ckitemRes.split("=").length > 1)
 											ck.put(ckitemRes.split("=")[0], ckitemRes.split("=")[1]);
 										break;
@@ -418,7 +434,7 @@ public class FundPriceUpdate2 {
 //							gupiaoRes = Jsoup.connect(url).userAgent(
 //									"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 //									.proxy("localhost", 7890).get().outerHtml();
-//							System.out.println(gupiaoRes);
+//							rl("gupiaoRes", gupiaoRes);
 //						} catch (IOException e1) {
 //							// TODO Auto-generated catch block
 //							e1.printStackTrace();
@@ -446,11 +462,10 @@ public class FundPriceUpdate2 {
 //						alarmPlayer.playAlarm2(1);
 //						continue;
 //					}
-					System.out.println("欧易服务器响应jsoup：");
-					System.out.println(gupiaoRes);
+					if (rl("欧易服务器响应jsoup：", "欧易服务器响应jsoup：")) System.out.println(gupiaoRes);
 					if (gupiaoRes == null || gupiaoRes.indexOf("Just a moment") != -1) {
 						// 从redis提取行情：
-						System.out.println("ip被限制");
+						rl("ip被限制", "ip被限制");
 //						String hangqing = jedisClient.get(fund.getCode().replace("-SWAP", "") + "_tickers");
 //						if (hangqing != null) {
 //							gupiaoRes = hangqing;
@@ -462,11 +477,11 @@ public class FundPriceUpdate2 {
 //							if (sec < 60) {
 //								System.out.println("websocket正常运行中: ws延迟:" + sec + "s " + hangqing);
 //							} else {
-//								System.out.println("websocket延迟过大，ws延迟:" + sec + "s");
+//								rl("websocket延迟过大，ws延迟:", "websocket延迟过大，ws延迟:" + sec + "s");
 //								gupiaoRes = "";
 //							}
 //						}
-						System.out.println("网络异常，url:" + url);
+						rl("网络异常，url:", "网络异常，url:" + url);
 						// alarmPlayer.playAlarm2(1);
 						continue;
 					}
@@ -503,7 +518,7 @@ public class FundPriceUpdate2 {
 					sinaheader.put("Host", "hq.sinajs.cn");
 					String gupiaoRes = cn.exrick.common.utils.HttpUtil.sendGetWithHeader(url, sinaheader);
 					if (gupiaoRes == null) {
-						System.out.println("网络异常，url:" + url);
+						rl("网络异常，url:", "网络异常，url:" + url);
 						alarmPlayer.playAlarm2(1);
 						continue;
 					}
@@ -528,12 +543,12 @@ public class FundPriceUpdate2 {
 
 				}
 				if (resultString == null) {
-					System.out.println("网络异常，url:" + url);
+					rl("网络异常，url:", "网络异常，url:" + url);
 					// alarmPlayer.playAlarm2(1);
 					continue;
 				} else {
-					System.out.println("url:" + url);
-					System.out.println(resultString);
+					rl("url:", "url:" + url);
+					rl("resultString", resultString);
 					int index = 0; // 初始化索引计数器
 					try {
 						JSONObject jsonObject = new JSONObject(resultString.replace("jsonpgz(", "").replace(");", ""));
@@ -573,19 +588,19 @@ public class FundPriceUpdate2 {
 							}
 						}
 						if (!jedisClient.exists("price_" + fund.getCode())) {
-							System.out.println("不存在key:" + "price_" + fund.getCode());
+							rl("不存在key:", "不存在key:" + "price_" + fund.getCode());
 
 							jedisClient.zadd("price_" + fund.getCode(), jingzhi.doubleValue(),
 									(System.currentTimeMillis() + 60000) + "");
 							jedisClient.expire("price_" + fund.getCode(), 86400);
 
 						} else {
-							System.out.println("存在key:" + "price_" + fund.getCode());
+							rl("存在key:", "存在key:" + "price_" + fund.getCode());
 							jedisClient.zadd("price_" + fund.getCode(), jingzhi.doubleValue(),
 									(System.currentTimeMillis() + 60000) + "");
 							long ttl = jedisClient.ttl("price_" + fund.getCode());
 
-							System.out.println("key ttl:   " + ttl);
+							rl("key ttl:   ", "key ttl:   " + ttl);
 //							if (fund.getCode().equals("DOGE-USDT")) {
 //								Thread.sleep(60000);
 //							}
@@ -597,19 +612,19 @@ public class FundPriceUpdate2 {
 						}
 
 						if (!jedisClient.exists("vol_" + fund.getCode())) {
-							System.out.println("不存在key:" + "vol_" + fund.getCode());
+							rl("不存在key:", "不存在key:" + "vol_" + fund.getCode());
 
 							jedisClient.zadd("vol_" + fund.getCode(), vol.doubleValue(),
 									(System.currentTimeMillis() + 60000) + "");
 							jedisClient.expire("vol_" + fund.getCode(), 86400);
 
 						} else {
-							System.out.println("存在key:" + "vol_" + fund.getCode());
+							rl("存在key:", "存在key:" + "vol_" + fund.getCode());
 							jedisClient.zadd("vol_" + fund.getCode(), vol.doubleValue(),
 									(System.currentTimeMillis() + 60000) + "");
 							long ttl = jedisClient.ttl("vol_" + fund.getCode());
 
-							System.out.println("key ttl:   " + ttl);
+							rl("key ttl:   ", "key ttl:   " + ttl);
 //							if (fund.getCode().equals("DOGE-USDT")) {
 //								Thread.sleep(60000);
 //							}
@@ -659,7 +674,7 @@ public class FundPriceUpdate2 {
 
 						int alarmtag = 0;
 
-						// System.out.println("成功更新基金价格：" + fundInfo.getName());
+						// rl("成功更新基金价格：", "成功更新基金价格：" + fundInfo.getName());
 
 						// lastvalue
 						int buyTag = 0;
@@ -773,7 +788,7 @@ public class FundPriceUpdate2 {
 //								sartag = -1;
 //
 //						}
-//						System.out.println("短线方向：" + sartag);
+//						rl("短线方向：", "短线方向：" + sartag);
 						String klineLong = "https://www.okx.com/api/v5/market/candles?instId=" + fund.getCode()
 								+ "&bar=" + fund.getBodongshu() + "m";
 						klineLong = klineLong.replace("60m", "1H");
@@ -793,7 +808,7 @@ public class FundPriceUpdate2 {
 //								sartagLong = -1;
 //
 //						}
-//						System.out.println("长线方向：" + sartagLong);&& sartag == 1 && sartagLong == 1 && sartag == 1 && sartagLong == 1
+//						rl("长线方向：", "长线方向：" + sartagLong);&& sartag == 1 && sartagLong == 1 && sartag == 1 && sartagLong == 1
 
 						Map<String, Integer> buyTagMap = null;
 						try {
@@ -820,7 +835,7 @@ public class FundPriceUpdate2 {
 
 						} catch (Exception e) {
 
-							System.out.println("lpslog:");
+							rl("lpslog:", "lpslog:");
 							e.printStackTrace();
 							alarmPlayer.playAlarm2(1);
 //							Thread.sleep(1800000);
@@ -983,11 +998,11 @@ public class FundPriceUpdate2 {
 							realBuyTag = 0;
 						}
 						fundInfo.setBuytag(buyTag);// realBuyTag
-						System.out.println("bugtag:" + buyTag);
+						rl("bugtag:", "bugtag:" + buyTag);
 
 						// 探测止盈情况09
 						List<Fund1Gaoduanzhuangbei2Ok> cangweis = caiService.getCangweisByTableName(tableName);
-						System.out.println("[DEBUG] tableName=" + tableName + ", cangweis.size=" + cangweis.size());
+						rl("[DEBUG] tableName=", "[DEBUG] tableName=" + tableName + ", cangweis.size=" + cangweis.size());
 
 //						int cate = buyTagMap.get("cate"); cate == 0
 						if (cangweis.size() == 0 && buyTag == -1) {//
@@ -1000,13 +1015,13 @@ public class FundPriceUpdate2 {
 							String tipsVar = "";
 //							alarmPlayer.playAlarm(1);
 //							if (buyTag == -1) {
-//								System.out.println("需要平仓");
+//								rl("需要平仓", "需要平仓");
 //								tipsVar = "需要平仓";
 //							}
 //							if (fxRealBuyTag == -1) {
-							System.out.println("需要立即平仓");
+							rl("需要立即平仓", "需要立即平仓");
 							tipsVar = "需要立即平仓";
-							System.out.println("buytag:" + fundInfo.getBuytag());
+							rl("buytag:", "buytag:" + fundInfo.getBuytag());
 //							}
 							// fundInfo.getUpcount() +
 							// fundInfo.setUpcount(tipsVar);
@@ -1030,17 +1045,17 @@ public class FundPriceUpdate2 {
 						String keyString = "?instType=SWAP" + "&instId=" + fund.getCode();
 
 						String ykp = okxService.trade("/api/v5/account/positions" + keyString, "GET", "");
-						System.out.println("[OKX持仓响应] " + fund.getCode() + ": " + ykp);
+						rl("[OKX持仓响应] ", "[OKX持仓响应] " + fund.getCode() + ": " + ykp);
 						BigDecimal ykPrice = new BigDecimal("0");
 						try {
 							if (ykp == null || ykp.trim().isEmpty()) {
-								System.out.println("[OKX持仓] 返回为空: " + fund.getCode());
+								rl("[OKX持仓] 返回为空: ", "[OKX持仓] 返回为空: " + fund.getCode());
 								continue;
 							}
 							JSONObject ykpJsonObject = new JSONObject(ykp);
 							JSONArray dts = ykpJsonObject.getJSONArray("data");
 							if (dts == null || dts.isEmpty()) {
-								System.out.println("[OKX持仓] data为空: " + fund.getCode() + " 返回: " + ykp);
+								rl("[OKX持仓] data为空: ", "[OKX持仓] data为空: " + fund.getCode() + " 返回: " + ykp);
 								continue;
 							}
 							for (int m = 0; m < dts.size(); m++) {
@@ -1065,7 +1080,7 @@ public class FundPriceUpdate2 {
 						// ========== 分批止盈逻辑 ==========
 						// 检查是否达到盈亏平衡价全平（立即卖出，不移动止盈）
 						boolean shouldCloseAll = false;
-						System.out.println("【全平检查】" + fund.getCode() + " ykPrice=" + ykPrice + ", jingzhi=" + jingzhi);
+						rl("【全平检查】", "【全平检查】" + fund.getCode() + " ykPrice=" + ykPrice + ", jingzhi=" + jingzhi);
 						if (ykPrice != null && ykPrice.compareTo(BigDecimal.ZERO) > 0
 								&& jingzhi.compareTo(BigDecimal.ZERO) > 0) {
 							// 盈亏平衡价 * 1.002 作为全平触发价（0.2%利润）
@@ -1085,16 +1100,16 @@ public class FundPriceUpdate2 {
 
 						if (shouldCloseAll) {
 							// 【全平逻辑】使用OKX一键平仓接口（不依赖数据库fene）
-							System.out.println("【全平触发】使用OKX close-position接口一键全平");
+							rl("【全平触发】", "【全平触发】使用OKX close-position接口一键全平");
 
 							// 1. 【合约全平】先平掉OKX所有仓位（底仓+T仓），然后直接清理T仓Redis记录
 							// OKX close-position 会平掉该品种所有仓位，不需要逐个平仓
 							dailyProfitTManager.clearAllPositionsRedis(fund.getCode());
-							System.out.println("【全平】已清理T仓位Redis记录");
+							rl("【全平】", "【全平】已清理T仓位Redis记录");
 
 							// 2. 【重要】设置T交易暂停标记，防止全平后立即重新开仓（暂停5分钟）
 							jedisClient.setex("t:pause:" + fund.getCode(), 300, "1");
-							System.out.println("【全平】已暂停T交易5分钟，防止立即重新开仓");
+							rl("【全平】", "【全平】已暂停T交易5分钟，防止立即重新开仓");
 
 							// 3. 清理分批止盈Redis记录
 							for (Fund1Gaoduanzhuangbei2Ok cwClean : cangweis) {
@@ -1104,15 +1119,15 @@ public class FundPriceUpdate2 {
 								jedisClient.del("highest:" + tableName + ":" + levelStr);
 								jedisClient.del("buyprice:" + tableName + ":" + levelStr);
 							}
-							System.out.println("【全平】清理所有分批止盈Redis记录");
+							rl("【全平】", "【全平】清理所有分批止盈Redis记录");
 
 							// 3. 标记所有底仓清仓（Service层会用OKX接口全平，不依赖fene计算）
 							// 只取第一个档位调用updatezhiying（OKX一键平仓会平掉所有仓位）
-							System.out.println("【全平诊断】cangweis.size=" + (cangweis == null ? "null" : cangweis.size())
+							rl("【全平诊断】", "【全平诊断】cangweis.size=" + (cangweis == null ? "null" : cangweis.size())
 									+ " for " + fund.getCode());
 							if (cangweis != null && !cangweis.isEmpty()) {
 								Fund1Gaoduanzhuangbei2Ok cwMain = cangweis.get(0);
-								System.out.println("【全平诊断】cwMain.level=" + cwMain.getLevel() + ", id=" + cwMain.getId()
+								rl("【全平诊断】", "【全平诊断】cwMain.level=" + cwMain.getLevel() + ", id=" + cwMain.getId()
 										+ ", fene=" + cwMain.getFene());
 								cwMain.setComment("全平平仓：OKX一键全平");
 								cwMain.setZhiying(BigDecimal.ZERO);
@@ -1123,17 +1138,40 @@ public class FundPriceUpdate2 {
 								cwMain.setMaxzhangfu5(BigDecimal.ZERO);
 								cwMain.setMaxdiefu5(BigDecimal.ZERO);
 								cwMain.setFene(BigDecimal.ZERO); // 清空fene
-								System.out.println("【全平诊断】准备调用updatezhiying，comment=" + cwMain.getComment()
+								rl("【全平诊断】", "【全平诊断】准备调用updatezhiying，comment=" + cwMain.getComment()
 										+ ", tableName=" + tableName);
 								try {
 									caiService.updatezhiying(cwMain, tableName, cangweis, fund);
-									System.out.println("【全平诊断】updatezhiying调用完成");
+									rl("【全平诊断】", "【全平诊断】updatezhiying调用完成");
 								} catch (Exception e) {
 									System.err.println("【全平诊断】updatezhiying调用异常：" + e.getMessage());
 									e.printStackTrace();
 								}
 
 								// 【已移至Service层事务】其他档位数据库更新由 updatezhiying 在事务中统一处理
+							} else {
+								// 【全平兜底】无底仓档位，直接调用OKX close-position
+								System.out.println("【全平兜底】" + fund.getCode() + " cangweis为空，直接调用OKX close-position");
+								try {
+									JSONObject closeParams = new JSONObject();
+									closeParams.put("instId", fund.getCode());
+									closeParams.put("mgnMode", fund.getCode().contains("SWAP") ? "isolated" : "cash");
+									closeParams.put("posSide", "long");
+									String closeResult = okxService.trade("/api/v5/trade/close-position", "POST", closeParams.toString());
+									System.out.println("【全平兜底】OKX结果: " + closeResult);
+									
+									if (closeResult != null) {
+										JSONObject resultJson = new JSONObject(closeResult);
+										if ("0".equals(resultJson.getStr("code"))) {
+											System.out.println("【全平兜底】OKX close-position 调用成功");
+										} else {
+											System.err.println("【全平兜底】OKX close-position 失败: " + resultJson.getStr("msg"));
+										}
+									}
+								} catch (Exception e) {
+									System.err.println("【全平兜底】异常: " + e.getMessage());
+									e.printStackTrace();
+								}
 							}
 
 							alarmtag = 5;
@@ -1146,12 +1184,12 @@ public class FundPriceUpdate2 {
 						BigDecimal atrPercent = null;
 						List<cn.exrick.manager.service.util.Candle> candles = null;
 						try {
-							// 获取15根1分钟K线（用于计算14周期ATR）
+							// 获取100根5分钟K线（用于MACD/ATR/RSI，100根确保EMA26收敛）
 							String klineUrl = "https://www.okx.com/api/v5/market/candles?instId=" + fund.getCode()
-									+ "&bar=1m&limit=15";
-							System.out.println("【诊断】开始获取K线: " + fund.getCode());
+									+ "&bar=5m&limit=100";
+							rl("【诊断】", "【诊断】开始获取K线: " + fund.getCode());
 							candles = cn.exrick.manager.service.util.okx.getline(klineUrl);
-							System.out.println("【诊断】K线获取结果: " + fund.getCode() + " candles="
+							rl("【诊断】", "【诊断】K线获取结果: " + fund.getCode() + " candles="
 									+ (candles == null ? "null" : candles.size()));
 							if (candles != null && candles.size() >= 15) {
 								atrPercent = dailyProfitTManager.calculateATRFromKlines(candles, jingzhi);
@@ -1160,23 +1198,27 @@ public class FundPriceUpdate2 {
 								try {
 									BigDecimal rsiValue = calculateRSIFromCandles(candles);
 									if (jedisClient == null) {
-										System.out.println("【诊断】jedisClient 为 null!");
+										rl("【诊断】", "【诊断】jedisClient 为 null!");
 									}
-									System.out.println("【诊断】准备写入Redis: " + fund.getCode() + "=" + rsiValue);
+									rl("【诊断】", "【诊断】准备写入Redis: " + fund.getCode() + "=" + rsiValue);
 									String result = jedisClient.setex("rsi:" + fund.getCode(), 60, rsiValue.toString());
-									System.out.println("【诊断】Redis setex 结果: " + result);
-									System.out.println("【诊断】Redis写入完成: " + fund.getCode());
-									System.out.println("【RSI计算】" + fund.getCode() + "=" + rsiValue);
+									rl("【诊断】", "【诊断】Redis setex 结果: " + result);
+									rl("【诊断】", "【诊断】Redis写入完成: " + fund.getCode());
+									// 计算并存储趋势指标（SMA10 + MACD）
+									if (candles.size() >= 30) {
+										calculateAndStoreTrend(fund.getCode(), candles, jingzhi);
+									}
+									rl("【RSI计算】", "【RSI计算】" + fund.getCode() + "=" + rsiValue);
 								} catch (Exception rsiEx) {
-									System.out.println("【RSI计算】失败: " + rsiEx.getMessage());
+									rl("【RSI计算】", "【RSI计算】失败: " + rsiEx.getMessage());
 									rsiEx.printStackTrace();
 								}
 							} else {
-								System.out.println("【诊断】K线数量不足15根: " + fund.getCode() + " size="
+								rl("【诊断】", "【诊断】K线数量不足15根: " + fund.getCode() + " size="
 										+ (candles == null ? "null" : candles.size()));
 							}
 						} catch (Exception e) {
-							System.out.println("【诊断】K线获取异常: " + fund.getCode() + " " + e.getMessage());
+							rl("【诊断】", "【诊断】K线获取异常: " + fund.getCode() + " " + e.getMessage());
 							e.printStackTrace();
 						}
 						// 备用：使用tick数据
@@ -1186,10 +1228,11 @@ public class FundPriceUpdate2 {
 						}
 
 						if (atrPercent == null) {
-							atrPercent = new BigDecimal("0.005"); // 默认0.5%
-							System.out.println("【ATR计算】数据不足，使用默认值0.5% for " + fund.getCode());
+							// 【修复】K线获取失败时，使用0而非乐观的0.5%，确保低波动暂停和评分系统都能正确拦截
+							atrPercent = BigDecimal.ZERO;
+							rl("【ATR计算】", "【ATR计算】K线获取失败，ATR设为0，跳过T交易 for " + fund.getCode());
 						} else {
-							System.out.println("【ATR计算】K线ATR="
+							rl("【ATR计算】", "【ATR计算】K线ATR="
 									+ atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
 									+ "% for " + fund.getCode());
 						}
@@ -1199,8 +1242,10 @@ public class FundPriceUpdate2 {
 						// 1. 检查每日状态
 						DailyProfitTManager.DailyState state = dailyProfitTManager.getDailyState(fund.getCode());
 						if (!state.canTrade()) {
-							System.out.println("【T状态】" + fund.getCode() + " " + state.getStatus());
+							rl("【T状态】", "【T状态】" + fund.getCode() + " " + state.getStatus());
 						} else {
+							// 【新增】没有底仓时禁止T交易
+							if (cangweis != null && !cangweis.isEmpty()) {
 							// 2. 计算入场评分
 							String trend = "sideway";
 
@@ -1209,7 +1254,7 @@ public class FundPriceUpdate2 {
 							if (rsi == null) {
 								rsi = new BigDecimal("50"); // 默认中性
 							}
-							System.out.println("【T交易】RSI=" + rsi + " for " + fund.getCode());
+							rl("【T交易】", "【T交易】RSI=" + rsi + " for " + fund.getCode());
 
 							// ===== 计算量比（当前成交量/20周期均量）=====
 							BigDecimal volumeRatio = new BigDecimal("1.0"); // 默认中性
@@ -1240,19 +1285,19 @@ public class FundPriceUpdate2 {
 									}
 								}
 							} catch (Exception e) {
-								System.out.println("【T交易】量比计算失败: " + e.getMessage());
+								rl("【T交易】", "【T交易】量比计算失败: " + e.getMessage());
 							}
-							System.out.println("【T交易】量比=" + volumeRatio + " for " + fund.getCode());
+							rl("【T交易】", "【T交易】量比=" + volumeRatio + " for " + fund.getCode());
 							// 设置盈亏平衡价（使用OKX返回的bePx盈亏平衡价）
 							if (ykPrice != null && ykPrice.compareTo(BigDecimal.ZERO) > 0) {
 								dailyProfitTManager.setBreakevenPrice(fund.getCode(), ykPrice);
-								System.out.println("【T交易】盈亏平衡价（OKX）: " + ykPrice + " for " + fund.getCode());
+								rl("【T交易】", "【T交易】盈亏平衡价（OKX）: " + ykPrice + " for " + fund.getCode());
 							} else {
-								System.out.println("【T交易】警告：OKX盈亏平衡价无效，T交易可能偏离成本");
+								rl("【T交易】", "【T交易】警告：OKX盈亏平衡价无效，T交易可能偏离成本");
 							}
 
 							DailyProfitTManager.TradeScore score = dailyProfitTManager
-									.calculateTradeScore(fund.getCode(), jingzhi, rsi, atrPercent, trend, volumeRatio);
+									.calculateTradeScore(fund.getCode(), jingzhi, rsi, atrPercent, volumeRatio);
 
 							// 3. 检查是否可以开仓（传入fund.money作为张数）
 							// 【修改】T仓位买入量：DOGE=0.02张，XAUT=2张（与底仓区分）
@@ -1273,7 +1318,7 @@ public class FundPriceUpdate2 {
 							DailyProfitTManager.CanTradeResult canTrade = dailyProfitTManager.canOpen(fund.getCode(),
 									jingzhi, zhang, atrPercent);
 							if (canTrade.allowed && score.passed) {
-								System.out.println("开始下单t单");
+								rl("开始下单t单", "开始下单t单");
 								// 【方案1-防并发】先立即更新lastTradeTime，防止网络延迟期间重复下单
 								dailyProfitTManager.updateLastTradeTime(fund.getCode());
 
@@ -1312,16 +1357,16 @@ public class FundPriceUpdate2 {
 
 									}
 								} catch (Exception e) {
-									System.err.println("【T开仓00000-下单失败】" + e.getMessage());
+									rl("【T开仓00000-下单失败】", "【T开仓00000-下单失败】" + e.getMessage());
 									e.printStackTrace();
 								}
 
 								// 3. 下单成功后，查询posId并记录到Redis
 								if (orderSuccess) {
 									DailyProfitTManager.TPosition pos = dailyProfitTManager.openPosition(fund.getCode(),
-											jingzhi, score, canTrade.zhang, atrPercent);
+											jingzhi, score, canTrade.zhang, atrPercent, candles);
 									if (pos != null) {
-										System.out.println("【T开仓】Redis记录成功 " + pos.id + " @" + jingzhi + " 张数="
+										rl("【T开仓】", "【T开仓】Redis记录成功 " + pos.id + " @" + jingzhi + " 张数="
 												+ pos.zhang + " 评分=" + score.totalScore);
 
 										// 记录张数到Redis
@@ -1334,22 +1379,22 @@ public class FundPriceUpdate2 {
 //											String okxPosId = queryOkxPosId(fund.getCode(), posId);
 //											if (okxPosId != null) {
 //												jedisClient.setex(posKey + ":okxPosId", 86400, okxPosId);
-//												System.out.println("【T开仓】保存OKX posId: " + okxPosId);
+//												rl("【T开仓】", "【T开仓】保存OKX posId: " + okxPosId);
 //											}
 //										} catch (Exception e) {
-//											System.err.println("【T开仓】查询posId失败: " + e.getMessage());
+//											rl("【T开仓】查询posId失败: ", "【T开仓】查询posId失败: " + e.getMessage());
 //										}
 									}
 								} else {
 									// 【方案1-防并发】下单失败，重置lastTradeTime允许立即重试
 									dailyProfitTManager.resetLastTradeTime(fund.getCode());
-									System.out.println("【T000开仓】因下单失败，不记录Redis仓位，已重置lastTradeTime允许重试");
+									rl("【T000开仓】", "【T000开仓】因下单失败，不记录Redis仓位，已重置lastTradeTime允许重试");
 								}
 
 							} else if (!canTrade.allowed && score.passed) {
-								System.out.println("【T不可开-rsi或者间距不足】" + fund.getCode() + " " + canTrade.reason);
+								rl("【T不可开-rsi或者间距不足】", "【T不可开-rsi或者间距不足】" + fund.getCode() + " " + canTrade.reason);
 							} else {
-								System.out.println("【T不可开-分数或者振幅小】" + fund.getCode() + " " + score.totalScore);
+								rl("【T不可开-分数或者振幅小】", "【T不可开-分数或者振幅小】" + fund.getCode() + " " + score.totalScore);
 
 							}
 
@@ -1363,7 +1408,7 @@ public class FundPriceUpdate2 {
 								String zhangStr2 = jedisClient.get(posKey2 + ":zhang");
 
 								if (zhangStr2 == null) {
-									System.err.println("【T平仓】无法找到仓位张数，跳过：" + signal.positionId);
+									rl("【T平仓】无法找到仓位张数，跳过：", "【T平仓】无法找到仓位张数，跳过：" + signal.positionId);
 									continue;
 								}
 
@@ -1396,7 +1441,7 @@ public class FundPriceUpdate2 {
 //									if (closePosId != null && !closePosId.isEmpty()) {
 //										lastValueWithPosId = "T" + signal.positionId + ":" + closePosId;
 //										cwTemp2.setFirsttime(closePosId); // 【关键】设置posId到firsttime字段，供卖出时使用
-//										System.out.println("【T平仓】使用posId: " + closePosId);
+//										rl("【T平仓】使用posId: ", "【T平仓】使用posId: " + closePosId);
 //									}
 
 									// 调用底仓接口下单（alarmtag=3表示卖出）
@@ -1404,11 +1449,11 @@ public class FundPriceUpdate2 {
 											closeZhang, fund, cwTemp2, lastvalue);
 									if (re == 1) {
 										closeSuccess = true;
-										System.out.println("【T平仓-下单成功】" + signal.positionId + " " + closeZhang + "张 @"
+										rl("【T平仓-下单成功】", "【T平仓-下单成功】" + signal.positionId + " " + closeZhang + "张 @"
 												+ signal.price);
 									}
 								} catch (Exception e) {
-									System.err.println("【T平仓-下单失败】" + signal.positionId + "：" + e.getMessage());
+									rl("【T平仓-下单失败】", "【T平仓-下单失败】" + signal.positionId + "：" + e.getMessage());
 									e.printStackTrace();
 								}
 
@@ -1416,7 +1461,7 @@ public class FundPriceUpdate2 {
 								if (closeSuccess) {
 									dailyProfitTManager.closePosition(fund.getCode(), signal, jingzhi);
 									jedisClient.del(posKey2 + ":zhang");
-									System.out.println("【T平仓】Redis清理成功：" + signal.positionId);
+									rl("【T平仓】Redis清理成功：", "【T平仓】Redis清理成功：" + signal.positionId);
 								} else {
 									System.out.println("【T平仓】因下单失败，保留Redis仓位：" + signal.positionId);
 								}
@@ -1431,7 +1476,7 @@ public class FundPriceUpdate2 {
 							long now = System.currentTimeMillis();
 							if (lastReport == null || now - Long.parseLong(lastReport) > 30000) {
 								String report = dailyProfitTManager.getPositionReport(fund.getCode());
-								System.out.println(report);
+								if (rl("T仓位报告", report)) System.out.println(report);
 
 								// 【可选】同时输出到文件，方便查看历史
 								// try {
@@ -1445,8 +1490,12 @@ public class FundPriceUpdate2 {
 
 							// 7. 每5分钟输出一次全局资金报告
 							if (now % (5 * 60 * 1000) < 3000) {
-								System.out.println(dailyProfitTManager.getGlobalMarginReport());
+								if (rl("全局资金报告", dailyProfitTManager.getGlobalMarginReport())) System.out.println(dailyProfitTManager.getGlobalMarginReport());
 							}
+						} else {
+							rl("【T交易禁止】", "【T交易禁止】" + fund.getCode() + " 无底仓，跳过T交易");
+							dailyProfitTManager.clearAllPositionsRedis(fund.getCode());
+						}
 						}
 						// ========== T交易逻辑结束 ==========
 
@@ -1538,7 +1587,7 @@ public class FundPriceUpdate2 {
 									// 保本止损：卖出全部剩余
 									sellFene = remainingFene;
 									cw.setComment("保本止损清仓" + sellFene + "张（第一批已卖" + soldFene + "张）：" + dxzzlCw);
-									System.out.println("【保本止损】触发！第一批已卖" + soldFene + "张，现清仓剩余" + sellFene + "张");
+									rl("【保本止损】触发！第一批已卖", "【保本止损】触发！第一批已卖" + soldFene + "张，现清仓剩余" + sellFene + "张");
 								} else if (batchTpResult == 5) {
 									// 开仓止损：卖出全部
 									sellFene = remainingFene;
@@ -1556,7 +1605,7 @@ public class FundPriceUpdate2 {
 
 								// 设置本次卖出张数
 								cw.setFene(sellFene);
-								System.out.println("【分批止盈】批次=" + batchTpResult + " 原始=" + originalFene + "张 已卖="
+								rl("【分批止盈】批次=", "【分批止盈】批次=" + batchTpResult + " 原始=" + originalFene + "张 已卖="
 										+ soldFene + "张 剩余=" + remainingFene + "张 本次卖=" + sellFene + "张");
 
 								try {
@@ -1574,7 +1623,7 @@ public class FundPriceUpdate2 {
 									jedisClient.del("buyprice:" + tableName + ":" + cw.getLevel());
 									String stopType = batchTpResult == 4 ? "保本止损"
 											: (batchTpResult == 5 ? "开仓止损" : "止盈");
-									System.out.println("【" + stopType + "】清仓完成，清理所有Redis记录");
+									rl("【", "【" + stopType + "】清仓完成，清理所有Redis记录");
 
 									// 【修复】清仓时重置数据库中的最高价/最低价
 									try {
@@ -1591,9 +1640,9 @@ public class FundPriceUpdate2 {
 										record.setZhiying(BigDecimal.ZERO);
 
 										fund1Gaoduanzhuangbei2OkMapper.updateByExampleSelective(record, example);
-										System.out.println("【" + stopType + "】重置最高价/最低价完成，level=" + cw.getLevel());
+										rl("【", "【" + stopType + "】重置最高价/最低价完成，level=" + cw.getLevel());
 									} catch (Exception e) {
-										System.err.println("【清仓重置高低价失败】" + tableName + " level=" + cw.getLevel() + ": "
+										rl("【清仓重置高低价失败】", "【清仓重置高低价失败】" + tableName + " level=" + cw.getLevel() + ": "
 												+ e.getMessage());
 									}
 								}
@@ -1718,7 +1767,7 @@ public class FundPriceUpdate2 {
 						if ((jingzhi.compareTo(maxP) >= 0 || jingzhi.compareTo(minP) <= 0)
 								&& jingzhi.compareTo(new BigDecimal("0")) != 0) {
 							// 提醒用户卖出或买入
-							System.out.println("需要买入或卖出此基金：" + fundInfo.getName());
+							rl("需要买入或卖出此基金：", "需要买入或卖出此基金：" + fundInfo.getName());
 
 							try {
 								if (jingzhi.compareTo(maxP) >= 0) {
@@ -1749,10 +1798,10 @@ public class FundPriceUpdate2 {
 													"【Service RSI获取失败】" + instIdForRSI + ": " + e.getMessage());
 										}
 
-										// RSI>70：超买，跳过买入（但指针已移动）
-										if (rsiValue != null && rsiValue.compareTo(new BigDecimal("70")) > 0) {
-											System.out.println("【Service建仓阻止】" + instIdForRSI + " RSI=" + rsiValue
-													+ " 超买，level-" + fundInfo.getLevel() + " 跳过买入");
+										// RSI>55：偏强，追涨暂停（收紧：70→55）
+										if (rsiValue != null && rsiValue.compareTo(new BigDecimal("55")) > 0) {
+											rl("【Service建仓阻止】", "【Service建仓阻止】" + instIdForRSI + " RSI=" + rsiValue
+													+ " 偏强，level-" + fundInfo.getLevel() + " 暂停追涨");
 											// 不执行买入，但iscurrent指针已移动，等待RSI回落或价格继续下跌
 										} else {
 											alarmtag = 8;
@@ -1766,25 +1815,14 @@ public class FundPriceUpdate2 {
 											jsonObject.getBigDecimal("gszzl"), fund, fundInfo, lastvalue);
 
 								} else {
-									// ========== 建仓限制检查 ==========
-									boolean canBuild = checkBuildLimit(fund.getCode());
-									if (!canBuild) {
-										System.out.println("【建仓限制】" + fund.getCode() + " 今日建仓次数已满，跳过买入");
-										// 不建仓，但移动指针记录档位
-										alarmtag = 7;
-										caiService.updateCurrentPrice(tableName, jingzhi, alarmtag,
-												fundInfo.getBuypriceReal(), jsonObject.getBigDecimal("gszzl"), fund,
-												fundInfo, lastvalue);
-									} else {
-
-										// ========== RSI判断（智能建仓）==========
+									// ========== RSI判断（智能建仓）==========
 										BigDecimal rsi = getRSIFromRedis(fund.getCode());
 										if (rsi == null) {
 											rsi = new BigDecimal("50");
 										}
 
-										// RSI>70：超买，不建仓（避免追高）
-										if (rsi.compareTo(new BigDecimal("70")) > 0) {
+										// RSI>65：超买，不建仓（避免追高）（收紧：70→65）
+										if (rsi.compareTo(new BigDecimal("65")) > 0) {
 											System.out
 													.println("【建仓阻止】" + fund.getCode() + " RSI=" + rsi + " 超买，避免高位接盘");
 											// 不建仓，但移动指针记录档位
@@ -1793,11 +1831,24 @@ public class FundPriceUpdate2 {
 													fundInfo.getBuypriceReal(), jsonObject.getBigDecimal("gszzl"), fund,
 													fundInfo, lastvalue);
 										}
-										// RSI 30-70：正常区间，可以建仓
-										else if (rsi.compareTo(new BigDecimal("30")) >= 0) {
+										// RSI 35-65：正常区间，可以建仓（收紧：30→35）
+										else if (rsi.compareTo(new BigDecimal("35")) >= 0) {
+											// 【趋势过滤】趋势向下时，RSI≥40暂停建仓，避免下跌趋势中越跌越买（收紧：35→40）
+											String trend5m = jedisClient.get("trend:5m:" + fund.getCode());
+											if (trend5m != null && "down".equals(trend5m)
+													&& rsi.compareTo(new BigDecimal("40")) >= 0) {
+												System.out.println("【建仓阻止】" + fund.getCode()
+														+ " 趋势=down且RSI=" + rsi + "≥40，暂停底仓买入");
+												alarmtag = 7;
+												caiService.updateCurrentPrice(tableName, jingzhi, alarmtag,
+														fundInfo.getBuypriceReal(), jsonObject.getBigDecimal("gszzl"),
+														fund, fundInfo, lastvalue);
+												continue;
+											}
+
 											// 【全平后暂停检查】防止全平后立即重新建仓
 											if (jedisClient.exists("t:pause:" + fund.getCode())) {
-												System.out.println("【建仓暂停】" + fund.getCode() + " 全平后暂停期内，跳过建仓");
+												rl("【建仓暂停】", "【建仓暂停】" + fund.getCode() + " 全平后暂停期内，跳过建仓");
 												alarmtag = 7;
 												caiService.updateCurrentPrice(tableName, jingzhi, alarmtag,
 														fundInfo.getBuypriceReal(), jsonObject.getBigDecimal("gszzl"),
@@ -1808,8 +1859,6 @@ public class FundPriceUpdate2 {
 											System.out
 													.println("【建仓确认】" + fund.getCode() + " RSI=" + rsi + " 正常区间，执行建仓");
 											// ========== 检查通过，可以建仓 ==========
-											// 【重要】先记录建仓次数，再执行买入，确保异常时次数也被记录
-											recordBuild(fund.getCode());
 											fundInfo.setFene(fund.getMoney().multiply(fund.getHuiche()));
 											if (cbt == 1) {
 												alarmtag = 1;
@@ -1833,13 +1882,13 @@ public class FundPriceUpdate2 {
 														fund, fundInfo, lastvalue);
 											}
 										}
-										// RSI<30：超卖，最佳建仓时机
+										// RSI<35：超卖，最佳建仓时机
 										else {
 											fundInfo.setFene(fund.getMoney().multiply(fund.getHuiche()));
 
 											// 【全平后暂停检查】防止全平后立即重新建仓
 											if (jedisClient.exists("t:pause:" + fund.getCode())) {
-												System.out.println("【建仓暂停】" + fund.getCode() + " 全平后暂停期内，跳过建仓");
+												rl("【建仓暂停】", "【建仓暂停】" + fund.getCode() + " 全平后暂停期内，跳过建仓");
 												alarmtag = 7;
 												caiService.updateCurrentPrice(tableName, jingzhi, alarmtag,
 														fundInfo.getBuypriceReal(), jsonObject.getBigDecimal("gszzl"),
@@ -1848,10 +1897,8 @@ public class FundPriceUpdate2 {
 											}
 
 											System.out.println(
-													"【建仓确认】" + fund.getCode() + " RSI=" + rsi + " 超卖区间，技术性反弹概率高，执行建仓");
+													"【建仓确认】" + fund.getCode() + " RSI=" + rsi + " 超卖区间(<35)，技术性反弹概率高，执行建仓");
 											// ========== 检查通过，可以建仓 ==========
-											// 【重要】先记录建仓次数，再执行买入，确保异常时次数也被记录
-											recordBuild(fund.getCode());
 											if (cbt == 1) {
 												alarmtag = 1;
 												if (fund.getWendu() != null
@@ -1875,7 +1922,6 @@ public class FundPriceUpdate2 {
 											}
 										}
 									}
-								}
 
 							} catch (Exception e) {
 								e.printStackTrace();
@@ -1911,7 +1957,11 @@ public class FundPriceUpdate2 {
 									.multiply(new BigDecimal("100"));
 
 //							int alarmtag = 0;
-							BigDecimal catePrice = fundInfo.getBuypriceReal().multiply(new BigDecimal("1.0025"));
+							// 【V2026.05.13】star档位止盈从固定0.25%改为ATR自适应（3×ATR，保底0.5%）
+							BigDecimal starTpRate = (atrPercent != null)
+									? atrPercent.multiply(new BigDecimal("3")).max(new BigDecimal("0.005"))
+									: new BigDecimal("0.005");
+							BigDecimal catePrice = fundInfo.getBuypriceReal().multiply(BigDecimal.ONE.add(starTpRate));
 							BigDecimal catePrice2 = fundInfo.getBuypriceReal().multiply(fund.getZhangdiefu());
 //							fundInfo.setCate(catePrice.toString());
 
@@ -2015,7 +2065,7 @@ public class FundPriceUpdate2 {
 										jsonObject.getBigDecimal("gszzl"), fund, fundInfo, lastvalue);
 
 							} catch (Exception e) {
-								System.out.println("发生异常：" + e.getMessage());
+								rl("发生异常：", "发生异常：" + e.getMessage());
 								e.printStackTrace();
 								// TODO: handle exception
 								if (!e.getMessage().startsWith("return")) {
@@ -2055,7 +2105,7 @@ public class FundPriceUpdate2 {
 						}
 					} catch (Exception e) {
 						e.printStackTrace();
-						System.out.println("处理价格数据异常：" + e.getMessage());
+						rl("处理价格数据异常：", "处理价格数据异常：" + e.getMessage());
 					}
 				}
 			}
@@ -2187,7 +2237,7 @@ public class FundPriceUpdate2 {
 		String currentMult = atrMultiplier.toString();
 
 		if (!currentTrend.equals(lastTrend) || !currentMult.equals(lastMult)) {
-			System.out.println("【底仓止盈】ATR=" + atrPercent + " 乘数=" + atrMultiplier + " TP1=" + tp1 + "% TP2=" + tp2
+			rl("【底仓止盈】ATR=", "【底仓止盈】ATR=" + atrPercent + " 乘数=" + atrMultiplier + " TP1=" + tp1 + "% TP2=" + tp2
 					+ "% 回撤=" + trailingPct + "%");
 			jedisClient.setex(lastTrendKey, 3600, currentTrend);
 			jedisClient.setex(lastMultKey, 3600, currentMult);
@@ -2203,7 +2253,7 @@ public class FundPriceUpdate2 {
 
 		// 第一批止盈（动态比例）- 价格达标立即执行
 		if (status == 0 && profitPct.compareTo(tp1) >= 0) {
-			System.out.println("【底仓止盈-Tier1】价格达标" + profitPct.setScale(2, RoundingMode.HALF_UP) + "% >= "
+			rl("【底仓止盈-Tier1】价格达标", "【底仓止盈-Tier1】价格达标" + profitPct.setScale(2, RoundingMode.HALF_UP) + "% >= "
 					+ tp1.setScale(2, RoundingMode.HALF_UP) + "%，执行卖出25%");
 			jedisClient.setex(batchKey, 86400 * 30, "1");
 			return 1;
@@ -2211,7 +2261,7 @@ public class FundPriceUpdate2 {
 
 		// 第二批止盈（动态比例）- 价格达标立即执行
 		if (status == 1 && profitPct.compareTo(tp2) >= 0) {
-			System.out.println("【底仓止盈-Tier2】价格达标" + profitPct.setScale(2, RoundingMode.HALF_UP) + "% >= "
+			rl("【底仓止盈-Tier2】价格达标", "【底仓止盈-Tier2】价格达标" + profitPct.setScale(2, RoundingMode.HALF_UP) + "% >= "
 					+ tp2.setScale(2, RoundingMode.HALF_UP) + "%，执行卖出25%");
 			jedisClient.setex(batchKey, 86400 * 30, "2");
 			return 2;
@@ -2230,7 +2280,7 @@ public class FundPriceUpdate2 {
 				// 新仓位，重置最高价记录
 				highest = currentPrice;
 				jedisClient.setex(buyPriceKey, 86400 * 30, buyPrice.toString());
-				System.out.println("【移动止盈】检测到新仓位，重置最高价记录: " + currentPrice);
+				if (rl("移动止盈新仓位", "【移动止盈】检测到新仓位，重置最高价记录: " + currentPrice)) System.out.println("【移动止盈】检测到新仓位，重置最高价记录: " + currentPrice);
 			}
 
 			// 更新最高价
@@ -2250,7 +2300,7 @@ public class FundPriceUpdate2 {
 				BigDecimal actualPullback = highest.subtract(currentPrice).divide(highest, 4, RoundingMode.HALF_UP)
 						.multiply(new BigDecimal("100"));
 
-				System.out.println("【移动止盈】最高=" + highest + " 回撤阈值=" + trailingPct + "% 回撤价格=" + trailingPrice + " 当前="
+				rl("【移动止盈】最高=", "【移动止盈】最高=" + highest + " 回撤阈值=" + trailingPct + "% 回撤价格=" + trailingPrice + " 当前="
 						+ currentPrice + " 实际回撤=" + actualPullback + "%");
 
 				if (currentPrice.compareTo(trailingPrice) <= 0) {
@@ -2270,7 +2320,7 @@ public class FundPriceUpdate2 {
 			// 已卖出部分，且当前价跌破成本价-2%
 			BigDecimal stopLossPrice = buyPrice.multiply(new BigDecimal("0.98"));
 			if (soldFene.compareTo(BigDecimal.ZERO) > 0 && currentPrice.compareTo(stopLossPrice) < 0) {
-				System.out.println(
+				if (rl("保本止损", "【保本止损】第一批已卖" + soldFene + "张，当前价" + currentPrice + "跌破成本价-2%(" + stopLossPrice + ")，清仓剩余")) System.out.println(
 						"【保本止损】第一批已卖" + soldFene + "张，当前价" + currentPrice + "跌破成本价-2%(" + stopLossPrice + ")，清仓剩余");
 				jedisClient.setex(batchKey, 86400 * 30, "4"); // 标记为止损清仓
 				return 4; // 保本止损清仓
@@ -2320,7 +2370,7 @@ public class FundPriceUpdate2 {
 			}
 
 		} catch (Exception e) {
-			System.out.println("【量比计算】失败: " + e.getMessage());
+			rl("【量比计算】", "【量比计算】失败: " + e.getMessage());
 		}
 		return new BigDecimal("1.0"); // 异常时中性处理
 	}
@@ -2360,13 +2410,13 @@ public class FundPriceUpdate2 {
 		String rsiStr = jedisClient.get("rsi:" + symbol);
 		if (rsiStr == null) {
 			// RSI获取失败，返回超买状态(99)以阻止买入，避免在高位追涨
-			System.out.println("【RSI获取失败】" + symbol + " Redis中无数据，阻止买入以防止高位接盘");
+			rl("【RSI获取失败】", "【RSI获取失败】" + symbol + " Redis中无数据，阻止买入以防止高位接盘");
 			return new BigDecimal("99"); // 默认超买，阻止买入
 		}
 		try {
 			return new BigDecimal(rsiStr);
 		} catch (Exception e) {
-			System.out.println("【RSI解析失败】" + symbol + " 值:" + rsiStr + "，阻止买入");
+			rl("【RSI解析失败】", "【RSI解析失败】" + symbol + " 值:" + rsiStr + "，阻止买入");
 			return new BigDecimal("99"); // 解析失败也阻止买入
 		}
 	}
@@ -2477,20 +2527,20 @@ public class FundPriceUpdate2 {
 			String transOrder = okxService.trade("/api/v5/trade/order" + keyString, "GET", "");
 
 			if (transOrder == null || transOrder.isEmpty()) {
-				System.err.println("【查询posId】订单查询返回空: " + clOrdId);
+				rl("【查询posId】订单查询返回空: ", "【查询posId】订单查询返回空: " + clOrdId);
 				return null;
 			}
 
 			// 解析JSON获取posId
 			JSONObject json = new JSONObject(transOrder);
 			if (!"0".equals(json.getStr("code"))) {
-				System.err.println("【查询posId】订单查询失败: " + json.getStr("msg"));
+				rl("【查询posId】订单查询失败: ", "【查询posId】订单查询失败: " + json.getStr("msg"));
 				return null;
 			}
 
 			JSONArray data = json.getJSONArray("data");
 			if (data == null || data.isEmpty()) {
-				System.err.println("【查询posId】订单数据为空: " + clOrdId);
+				rl("【查询posId】订单数据为空: ", "【查询posId】订单数据为空: " + clOrdId);
 				return null;
 			}
 
@@ -2499,16 +2549,133 @@ public class FundPriceUpdate2 {
 			String posId = orderData.getStr("posId");
 
 			if (posId != null && !posId.isEmpty()) {
-				System.out.println("【查询posId】成功: " + symbol + " clOrdId=" + clOrdId + " posId=" + posId);
+				rl("【查询posId】成功: ", "【查询posId】成功: " + symbol + " clOrdId=" + clOrdId + " posId=" + posId);
 			} else {
-				System.err.println("【查询posId】订单中无posId: " + clOrdId);
+				rl("【查询posId】订单中无posId: ", "【查询posId】订单中无posId: " + clOrdId);
 			}
 			return posId;
 
 		} catch (Exception e) {
-			System.err.println("【查询posId】异常: " + e.getMessage());
+			rl("【查询posId】异常: ", "【查询posId】异常: " + e.getMessage());
 			e.printStackTrace();
 			return null;
 		}
+	}
+
+	/**
+	 * 计算并存储趋势指标（SMA10 + MACD柱状图）
+	 */
+	private void calculateAndStoreTrend(String symbol, List<cn.exrick.manager.service.util.Candle> candles, BigDecimal currentPrice) {
+		if (candles == null || candles.size() < 50)
+			return;
+
+		try {
+			// candles已是升序（旧→新），无需反转
+			java.util.List<cn.exrick.manager.service.util.Candle> asc = new java.util.ArrayList<>(candles);
+
+			// 提取收盘价
+			double[] closes = new double[asc.size()];
+			for (int i = 0; i < asc.size(); i++) {
+				closes[i] = asc.get(i).getClose();
+			}
+
+			// 计算 SMA10（最近10根）
+			double sma10 = 0;
+			for (int i = asc.size() - 10; i < asc.size(); i++) {
+				sma10 += closes[i];
+			}
+			sma10 /= 10;
+
+			// 计算 MACD
+			double[] ema12 = calculateEMA(closes, 12);
+			double[] ema26 = calculateEMA(closes, 26);
+
+			// MACD线 = EMA12 - EMA26
+			int validLen = Math.min(ema12.length, ema26.length);
+			double[] macdLine = new double[validLen];
+			for (int i = 0; i < validLen; i++) {
+				macdLine[i] = ema12[i] - ema26[i];
+			}
+
+			// 信号线 = EMA9(MACD线)
+			double[] signalLine = calculateEMA(macdLine, 9);
+
+			// 柱状图 = MACD线 - 信号线
+			int last = macdLine.length - 1;
+			double histNow = macdLine[last] - signalLine[last];
+			double histPrev = macdLine[last - 1] - signalLine[last - 1];
+			double histPrev2 = macdLine[last - 2] - signalLine[last - 2];
+
+			// 判断趋势状态
+			String trendState;
+			if (histNow > 0 && histPrev <= 0) {
+				trendState = "macd_golden"; // 柱状图由负转正
+			} else if (histNow > 0 && histNow > histPrev && histPrev > histPrev2) {
+				trendState = "macd_expanding"; // 红柱持续扩大
+			} else if (histNow > 0) {
+				trendState = "macd_positive"; // 红柱
+			} else if (histNow < 0 && histNow > histPrev && histPrev > histPrev2) {
+				trendState = "macd_shrinking_2"; // 绿柱连续2根缩窄
+			} else if (histNow < 0 && histNow > histPrev) {
+				trendState = "macd_shrinking"; // 绿柱单根缩窄
+			} else {
+				trendState = "down"; // 绿柱扩大或下跌
+			}
+
+			// 存入Redis
+			jedisClient.setex("sma:10:" + symbol, 300, String.valueOf(sma10));
+			jedisClient.setex("macd:hist:" + symbol, 300,
+					String.format("%.6f,%.6f,%.6f", histNow, histPrev, histPrev2));
+			jedisClient.setex("trend:5m:" + symbol, 300, trendState);
+
+			rl("【趋势计算】", "【趋势计算】" + symbol + " SMA10=" + String.format("%.5f", sma10)
+					+ " MACD=" + String.format("%.6f", macdLine[last])
+					+ " Signal=" + String.format("%.6f", signalLine[last])
+					+ " Hist=" + String.format("%.6f", histNow)
+					+ " 状态=" + trendState);
+
+			// 【V2026.04.20】计算量比：最近1根成交量 / 前10根平均成交量
+			if (asc.size() >= 15) {
+				double recentVol = asc.get(asc.size() - 1).getCjl();
+				double avgVol = 0;
+				for (int i = asc.size() - 11; i < asc.size() - 1; i++) {
+					avgVol += asc.get(i).getCjl();
+				}
+				avgVol /= 10;
+				double volRatio = avgVol > 0 ? recentVol / avgVol : 1.0;
+				jedisClient.setex("t:volratio:" + symbol, 60, String.format("%.2f", volRatio));
+				rl("【量比计算】", "【量比计算】" + symbol + " 量比=" + String.format("%.2f", volRatio)
+						+ " 最近=" + String.format("%.0f", recentVol) + " 平均=" + String.format("%.0f", avgVol));
+			}
+
+		} catch (Exception e) {
+			rl("【趋势计算】异常: ", "【趋势计算】异常: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * 计算EMA（标准递归实现）
+	 * ema[0] = SMA(前period根)，从ema[1]开始递归
+	 */
+	private double[] calculateEMA(double[] data, int period) {
+		double[] ema = new double[data.length];
+		double multiplier = 2.0 / (period + 1);
+
+		// 初始值用SMA
+		double sum = 0;
+		for (int i = 0; i < period && i < data.length; i++) {
+			sum += data[i];
+		}
+		double initial = sum / Math.min(period, data.length);
+
+		if (data.length == 0)
+			return ema;
+
+		ema[0] = initial;
+		for (int i = 1; i < data.length; i++) {
+			ema[i] = (data[i] - ema[i - 1]) * multiplier + ema[i - 1];
+		}
+
+		return ema;
 	}
 }

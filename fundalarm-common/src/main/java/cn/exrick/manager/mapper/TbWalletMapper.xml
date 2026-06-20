@@ -9,6 +9,8 @@
     <result column="updated" jdbcType="TIMESTAMP" property="updated" />
     <result column="version" jdbcType="INTEGER" property="version" />
     <result column="nickname" jdbcType="VARCHAR" property="nickname" />
+    <result column="vip" jdbcType="INTEGER" property="vip" />
+    <result column="vid_end_time" jdbcType="TIMESTAMP" property="vidEndTime" />
     <result column="feiji_username" jdbcType="VARCHAR" property="feijiUsername" />
     <result column="feiji_password" jdbcType="VARCHAR" property="feijiPassword" />
   </resultMap>
@@ -71,7 +73,7 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    Id, uid, balance, created, updated, version, nickname, feiji_username, feiji_password
+    Id, uid, balance, created, updated, version, nickname, vip, vid_end_time, feiji_username, feiji_password
   </sql>
   <select id="selectByExample" parameterType="cn.exrick.manager.pojo.TbWalletExample" resultMap="BaseResultMap">
     select
@@ -270,5 +272,15 @@
       feiji_username = #{feijiUsername,jdbcType=VARCHAR},
       feiji_password = #{feijiPassword,jdbcType=VARCHAR}
     where Id = #{id,jdbcType=INTEGER}
+  </update>
+
+  <!-- 原子扣费：余额大于0时减1，用于防止并发下Lost Update -->
+  <update id="deductBalance">
+    update tb_wallet
+    set balance = balance - 1,
+        version = version + 1,
+        updated = now()
+    where uid = #{uid,jdbcType=VARCHAR}
+      and balance > 0
   </update>
 </mapper>

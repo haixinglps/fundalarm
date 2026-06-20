@@ -504,6 +504,16 @@ public class WaiwangVideoExample {
             return (Criteria) this;
         }
 
+        public Criteria andFriendindexEqualTo(int value) {
+            addCriterion("friendindex =", value, "friendindex");
+            return (Criteria) this;
+        }
+
+        public Criteria andFriendindexNotEqualTo(int value) {
+            addCriterion("friendindex <>", value, "friendindex");
+            return (Criteria) this;
+        }
+
         public Criteria andDurationIsNull() {
             addCriterion("duration is null");
             return (Criteria) this;

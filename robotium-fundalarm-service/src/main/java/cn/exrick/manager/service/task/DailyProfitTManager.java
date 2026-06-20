@@ -6,6 +6,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,31 +68,38 @@ public class DailyProfitTManager {
 	static {
 		// XAUT配置（5倍，1张=4U，最低买1张）
 		// 百分比模式：止盈0.3% / 止损0.2%（盈亏比1.5:1）
-		CONTRACT_CONFIGS.put("XAUT", new ContractConfig(new BigDecimal("0.001"), // 1张=4U
+		ContractConfig xautConfig = new ContractConfig(new BigDecimal("0.001"), // 1张=4U
 				new BigDecimal("5"), // 5倍杠杆
-				new BigDecimal("0.0015"), // 网格间距0.15%
-				new BigDecimal("0.003"), // 止盈0.3%
-				new BigDecimal("0.002"), // 止损0.2%
+				new BigDecimal("0.0008"), // 网格间距0.08%（XAUT低波动，放宽间距）
+			new BigDecimal("0.004"), // 止盈0.4%（扩大止损容忍度）
+					new BigDecimal("0.0027"), // 止损0.27%（与DOGE统一盈亏比）
 				30, // 日最大30次
 				30, // 冷却30秒
 				true, // 百分比模式
 				new BigDecimal("1"), // 最小下单1张
 				new BigDecimal("30") // 最大下单30张（30U本金限制）
-		));
+		);
+		xautConfig.minAtrForPause = new BigDecimal("0.0010"); // 0.10%，XAU低波动暂停
+		xautConfig.minAtrForScore = new BigDecimal("0.0008"); // 0.08%，XAU评分最低门槛
+		CONTRACT_CONFIGS.put("XAUT", xautConfig);
 
 		// DOGE配置（3倍，1张=170U，最低买0.01张）
-		// 百分比模式：止盈0.45% / 止损0.3%（盈亏比1.5:1）
-		CONTRACT_CONFIGS.put("DOGE", new ContractConfig(new BigDecimal("1000"), // 1张=170U（0.01张=1.7U）
+		// 【修改】百分比模式：止盈0.25% / 止损0.17%（盈亏比1.5:1）- 适应低波动行情
+		ContractConfig dogeConfig = new ContractConfig(new BigDecimal("1000"), // 1张=170U（0.01张=1.7U）
 				new BigDecimal("3"), // 3倍杠杆
-				new BigDecimal("0.0015"), // 网格间距0.15%（与XAUT统一，ATR自适应）
-				new BigDecimal("0.0045"), // 止盈0.45%
-				new BigDecimal("0.003"), // 止损0.3%
+			new BigDecimal("0.003"), // 网格间距0.30%（DOGE高波动，保底间距放宽）
+			new BigDecimal("0.006"), // 止盈0.60%（避免正常抖动误止盈）
+					new BigDecimal("0.004"), // 止损0.40%（盈亏比1.5:1，过滤噪音）
 				20, // 日最大20次
 				60, // 冷却60秒
 				true, // 百分比模式
 				new BigDecimal("0.01"), // 最小下单0.01张
 				new BigDecimal("10") // 最大下单10张（风控）
-		));
+		);
+		dogeConfig.maxGap = new BigDecimal("0.05");
+		dogeConfig.minAtrForPause = new BigDecimal("0.0012");
+		dogeConfig.minAtrForScore = new BigDecimal("0.0010");
+		CONTRACT_CONFIGS.put("DOGE", dogeConfig);
 	}
 
 	/**
@@ -110,6 +118,9 @@ public class DailyProfitTManager {
 		public BigDecimal slPercent; // 止损比例(如0.002=0.2%)
 		public BigDecimal minOrder; // 最小下单张数
 		public BigDecimal maxOrder; // 最大下单张数
+		public BigDecimal maxGap = new BigDecimal("0.02"); // 自适应间距上限
+		public BigDecimal minAtrForPause = new BigDecimal("0.002"); // 低波动暂停阈值
+		public BigDecimal minAtrForScore = new BigDecimal("0.0015"); // 评分最低ATR要求
 
 		// 百分比模式（带最小/最大下单限制）
 		public ContractConfig(BigDecimal valuePerZhang, BigDecimal leverage, BigDecimal gridGap, BigDecimal tpPercent,
@@ -172,7 +183,7 @@ public class DailyProfitTManager {
 	/** 最小交易单位：0.01张 */
 	private static final BigDecimal MIN_UNIT = new BigDecimal("0.01");
 	/** 最大持仓：5组 */
-	private static final int MAX_POSITIONS = 5;
+	public static final int MAX_POSITIONS = 5;
 
 	// ========== Redis Keys ==========
 	private static final String KEY_DAILY_STATE = "t:daily:{symbol}:{date}";
@@ -224,9 +235,6 @@ public class DailyProfitTManager {
 			if (pnl.compareTo(DAILY_LOSS_LIMIT) <= 0) {
 				stopped = true;
 				return false;
-			}
-			if (consecutiveLosses >= 2) {
-				return false; // 连续2亏后需要冷却
 			}
 			return true;
 		}
@@ -311,120 +319,192 @@ public class DailyProfitTManager {
 		}
 	}
 
+	/**
+	 * 【V2026.05.13】ATR倍数模式计算止盈止损百分比
+	 * TP = max(ATR × 2.5, 0.25%)，SL = max(ATR × 1.5, 0.12%)
+	 * 修正：原1×ATR止损过于敏感，频繁被正常波动洗掉，改为1.5×更合理
+	 */
+	public static BigDecimal[] calculateDynamicTPSL(BigDecimal atrPercent, String symbol) {
+		if (atrPercent == null || atrPercent.compareTo(BigDecimal.ZERO) <= 0) {
+			return new BigDecimal[]{new BigDecimal("0.003"), new BigDecimal("0.002")};
+		}
+
+		BigDecimal tpRate = atrPercent.multiply(new BigDecimal("2.5"));
+		BigDecimal slRate = atrPercent.multiply(new BigDecimal("1.5"));
+
+		// 止盈保底0.25%
+		tpRate = tpRate.max(new BigDecimal("0.0025"));
+
+		// 【V2026.05.28】按品种差异化最低止损：XAU 0.30%，DOGE 0.25%，其他 0.12%
+		BigDecimal slFloor;
+		if (symbol != null && (symbol.contains("XAU") || symbol.contains("XAUT"))) {
+			slFloor = new BigDecimal("0.0020");
+		} else if (symbol != null && symbol.contains("DOGE")) {
+			slFloor = new BigDecimal("0.0025");
+		} else {
+			slFloor = new BigDecimal("0.0012");
+		}
+		slRate = slRate.max(slFloor);
+
+		return new BigDecimal[]{tpRate, slRate};
+	}
+
 	// ========== 入场评分系统（核心） ==========
 
 	/**
 	 * 入场质量评分（0-100分） 只有>=80分才允许交易
 	 */
 	public TradeScore calculateTradeScore(String symbol, BigDecimal currentPrice, BigDecimal rsi, BigDecimal atrPercent,
-			String trend, BigDecimal volumeRatio) {
+			BigDecimal volumeRatio) {
 
 		TradeScore score = new TradeScore();
 		int total = 0;
 
-		// 1. RSI评分（25分）
-		// 最佳区间：45-60，给25分
-		// 30-45：超卖反弹，给20分
-		// 60-70：偏强，给15分
-		// <30或>70：不给分
+		// 1. RSI评分（20分）- 【顺势T版】
+		// 最佳区间：40-65（顺势区间，给20分）
+		// 35-40 或 65-70：可交易但谨慎，给10分
+		// <35：下跌中继，只给5分（不鼓励抄底）
+		// >70：超买，blocked
 		if (rsi != null) {
-			if (rsi.compareTo(new BigDecimal("45")) >= 0 && rsi.compareTo(new BigDecimal("60")) <= 0) {
-				score.rsiScore = 25;
-				score.rsiComment = "RSI=" + rsi + " 健康区间";
-			} else if (rsi.compareTo(new BigDecimal("30")) >= 0 && rsi.compareTo(new BigDecimal("45")) < 0) {
+			if (rsi.compareTo(new BigDecimal("40")) >= 0 && rsi.compareTo(new BigDecimal("65")) <= 0) {
 				score.rsiScore = 20;
-				score.rsiComment = "RSI=" + rsi + " 超卖反弹";
-			} else if (rsi.compareTo(new BigDecimal("60")) > 0 && rsi.compareTo(new BigDecimal("70")) <= 0) {
-				score.rsiScore = 15;
-				score.rsiComment = "RSI=" + rsi + " 偏强谨慎";
+				score.rsiComment = "RSI=" + rsi + " 顺势区间";
+			} else if (rsi.compareTo(new BigDecimal("35")) >= 0 && rsi.compareTo(new BigDecimal("40")) < 0) {
+				score.rsiScore = 10;
+				score.rsiComment = "RSI=" + rsi + " 偏弱";
+			} else if (rsi.compareTo(new BigDecimal("65")) > 0 && rsi.compareTo(new BigDecimal("70")) <= 0) {
+				score.rsiScore = 10;
+				score.rsiComment = "RSI=" + rsi + " 偏强";
+			} else if (rsi.compareTo(new BigDecimal("35")) < 0) {
+				score.rsiScore = 5;
+				score.rsiComment = "RSI=" + rsi + " 超卖（不做左侧）";
 			} else {
 				score.rsiScore = 0;
-				score.rsiComment = "RSI=" + rsi + " 极端值，放弃";
+				score.rsiComment = "RSI=" + rsi + " 超买，放弃";
 				score.blocked = true;
 			}
 		}
 		total += score.rsiScore;
 
-//		// 2. 趋势评分（25分）
-//		if ("up".equals(trend)) {
-//			score.trendScore = 25;
-//			score.trendComment = "上升趋势";
-//		} else if ("sideway_up".equals(trend)) {
-//			score.trendScore = 20;
-//			score.trendComment = "震荡偏多";
-//		} else if ("sideway".equals(trend)) {
-//			score.trendScore = 10;
-//			score.trendComment = "横盘震荡";
-//		} else {
-//			score.trendScore = 0;
-//			score.trendComment = "下降趋势，放弃";
-//			score.blocked = true;
-//		}
-//		total += score.trendScore;
-//
-//		// 3. 波动率评分（20分）
-//		// ATR% 0.8%-2% 最佳
-//		if (atrPercent != null) {
-//			if (atrPercent.compareTo(new BigDecimal("0.008")) >= 0
-//					&& atrPercent.compareTo(new BigDecimal("0.020")) <= 0) {
-//				score.volatilityScore = 20;
-//				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
-//						+ "% 理想";
-//			} else if (atrPercent.compareTo(new BigDecimal("0.020")) > 0) {
-//				score.volatilityScore = 10;
-//				score.volComment = "波动率过高，谨慎";
-//			} else {
-//				score.volatilityScore = 5;
-//				score.volComment = "波动率偏低";
-//			}
-//		}
-//		total += score.volatilityScore;
-//
-//		// 4. 成交量评分（15分）
-//		// 量比>1.2说明有资金关注
-//		if (volumeRatio != null) {
-//			if (volumeRatio.compareTo(new BigDecimal("1.5")) >= 0) {
-//				score.volumeScore = 15;
-//				score.volComment += " 量比=" + volumeRatio + " 放量";
-//			} else if (volumeRatio.compareTo(new BigDecimal("1.2")) >= 0) {
-//				score.volumeScore = 10;
-//				score.volComment += " 量比=" + volumeRatio + " 温和";
-//			} else {
-//				score.volumeScore = 5;
-//				score.volComment += " 量比=" + volumeRatio + " 缩量";
-//			}
-//		}
-//		total += score.volumeScore;
-//
-//		// 5. 时间评分（15分）
-//		// 避开开盘9:00-9:10，收盘14:50-15:00
-//		Calendar cal = Calendar.getInstance();
-//		int hour = cal.get(Calendar.HOUR_OF_DAY);
-//		int minute = cal.get(Calendar.MINUTE);
-//		int timeScore = 15;
-//		String timeComment = "正常时段";
-//
-//		if (hour == 9 && minute < 10) {
-//			timeScore = 0;
-//			timeComment = "开盘波动大，观望";
-//			score.blocked = true;
-//		} else if (hour == 14 && minute >= 50) {
-//			timeScore = 5;
-//			timeComment = "收盘前，谨慎";
-//		} else if (hour == 11 && minute >= 25) {
-//			timeScore = 10;
-//			timeComment = "午盘前";
-//		} else if (hour == 13 && minute < 5) {
-//			timeScore = 10;
-//			timeComment = "午后开盘";
-//		}
-//		score.timeScore = timeScore;
-//		score.timeComment = timeComment;
-//		total += score.timeScore;
+		ContractConfig config = getConfig(symbol);
+		// 【V2026.04.19】顺势T：SMA10过滤 + MACD趋势确认
+		String trend5m = jedisClient.get("trend:5m:" + symbol);
+		String smaStr = jedisClient.get("sma:10:" + symbol);
+		BigDecimal sma10 = (smaStr != null && !smaStr.isEmpty()) ? new BigDecimal(smaStr) : null;
+
+		// SMA10硬性过滤：价格低于SMA10扣分但不完全阻止（让综合评分决定）
+		if (sma10 != null && currentPrice.compareTo(sma10.multiply(new BigDecimal("0.998"))) < 0) {
+			score.trendScore = -15;
+			score.trendComment = "价格低于SMA10，顺势T谨慎抄底";
+			// 不设置blocked，继续后续评分让综合分数决定
+			total += score.trendScore;
+		}
+
+		// 【V2026.04.22】SMA10追高过滤：价格偏离SMA10过高禁止追高
+		if (sma10 != null && atrPercent != null) {
+			BigDecimal deviation = currentPrice.subtract(sma10).divide(sma10, 6, RoundingMode.HALF_UP);
+			// 上限 = ATR × 1.5，最低 0.15%（DOGE约0.3%，XAU约0.2%）
+			BigDecimal maxDeviation = atrPercent.multiply(new BigDecimal("1.5")).max(new BigDecimal("0.0015"));
+			if (deviation.compareTo(maxDeviation) > 0) {
+				score.trendScore = -30;
+				score.trendComment = "价格偏离SMA10=" + deviation.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
+						+ "%，超过上限" + maxDeviation.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
+						+ "%，禁止追高";
+				score.blocked = true;
+				total += score.trendScore;
+				score.totalScore = total;
+				score.passed = false;
+				return score;
+			}
+		}
+
+		// MACD趋势评分（V2026.04.21 双轨策略：右侧趋势+左侧抄底）
+		if ("macd_shrinking_2".equals(trend5m)) {
+			// 【左侧】绿柱连续2根缩窄，下跌动能衰竭，最高评分
+			if (rsi != null && rsi.compareTo(new BigDecimal("30")) < 0) {
+				score.trendScore = -10;
+				score.trendComment = "绿柱缩窄但RSI=" + rsi + "<30，超卖区不做左侧";
+				score.blocked = true;
+			} else {
+				score.trendScore = 20;
+				score.trendComment = "绿柱连续缩窄，下跌动能衰竭(左侧抄底)";
+			}
+		} else if ("macd_golden".equals(trend5m)) {
+			// 【右侧】金叉确认，趋势启动
+			if (rsi != null && rsi.compareTo(new BigDecimal("60")) >= 0) {
+				score.trendScore = -10;
+				score.trendComment = "MACD金叉但RSI=" + rsi + ">=60，高位追涨禁止";
+				score.blocked = true;
+			} else if (symbol != null && symbol.toUpperCase().contains("XAUT")) {
+				// 【V2026.05.14】XAUT取消MACD金叉加分，避免横盘假金叉追高开仓
+				score.trendScore = 0;
+				score.trendComment = "XAUT取消MACD金叉评分，避免假信号";
+			} else {
+				score.trendScore = 15;
+				score.trendComment = "MACD金叉，趋势启动(右侧追势)";
+			}
+		} else if ("macd_expanding".equals(trend5m)) {
+			// 【右侧】红柱扩大，趋势延续
+			if (rsi != null && rsi.compareTo(new BigDecimal("60")) >= 0) {
+				score.trendScore = -10;
+				score.trendComment = "MACD扩大但RSI=" + rsi + ">=60，高位追涨禁止";
+				score.blocked = true;
+			} else if (symbol != null && symbol.toUpperCase().contains("XAUT")) {
+				// 【V2026.05.14】XAUT取消MACD红柱扩大加分
+				score.trendScore = 0;
+				score.trendComment = "XAUT取消MACD红柱扩大评分";
+			} else {
+				score.trendScore = 10;
+				score.trendComment = "MACD红柱扩大，趋势向上(右侧追势)";
+			}
+		} else if ("macd_shrinking".equals(trend5m)) {
+			// 【左侧】绿柱单根缩窄，试探性信号，低分
+			if (rsi != null && rsi.compareTo(new BigDecimal("30")) < 0) {
+				score.trendScore = -10;
+				score.trendComment = "绿柱缩窄但RSI=" + rsi + "<30，超卖区不做左侧";
+				score.blocked = true;
+			} else {
+				score.trendScore = 10;
+				score.trendComment = "绿柱单根缩窄，可能反弹(左侧试探)";
+			}
+		} else {
+			score.trendScore = -20;
+			score.trendComment = "非做多状态，禁止开仓";
+			score.blocked = true;
+		}
+		total += score.trendScore;
+
+		// 3. 波动率评分（20分）
+		if (atrPercent != null) {
+			if (atrPercent.compareTo(new BigDecimal("0.005")) >= 0) {
+				score.volatilityScore = 20;
+				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP) + "% 理想";
+			} else if (atrPercent.compareTo(new BigDecimal("0.002")) >= 0) {
+				score.volatilityScore = 15;
+				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP) + "% 正常";
+			} else if (atrPercent.compareTo(new BigDecimal("0.001")) >= 0) {
+				score.volatilityScore = 5;
+				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP) + "% 偏低";
+			} else {
+				score.volatilityScore = 0;
+				score.volComment = "波动率=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP) + "% 过低";
+			}
+			total += score.volatilityScore;
+		}
+
+		// 【量比过滤】缩量（<0.5）禁止开仓，避免流动性不足被假突破套住
+		String volRatioStr = jedisClient.get("t:volratio:" + symbol);
+		if (volRatioStr != null && !volRatioStr.isEmpty()) {
+			BigDecimal volRatio = new BigDecimal(volRatioStr);
+			if (volRatio.compareTo(new BigDecimal("0.5")) < 0) {
+				score.blocked = true;
+				score.volComment = "量比=" + volRatio.setScale(2, RoundingMode.HALF_UP) + " 缩量行情，禁止开仓";
+			}
+		}
 
 		score.totalScore = total;
-		score.passed = (atrPercent.compareTo(new BigDecimal("0.0015")) >= 0) && total >= 20;
-
+		int passThreshold = symbol.toUpperCase().contains("XAU") ? 30 : 40;
+		score.passed = !score.blocked && (atrPercent.compareTo(config.minAtrForScore) >= 0) && total >= passThreshold;
 		return score;
 	}
 
@@ -466,29 +546,46 @@ public class DailyProfitTManager {
 		if (atrPercent != null && atrPercent.compareTo(BigDecimal.ZERO) > 0) {
 			BigDecimal atrBasedGap = atrPercent.multiply(new BigDecimal("0.5")); // ATR的一半作为间距
 			adaptiveGap = adaptiveGap.max(atrBasedGap);
-			// 限制最大间距不超过2%（绝对上限，防止极端行情无法开仓）
-			BigDecimal maxGap = new BigDecimal("0.02");
+			// 限制最大间距不超过配置上限（DOGE 5%，XAUT 2%）
+			BigDecimal maxGap = config.maxGap;
 			if (adaptiveGap.compareTo(maxGap) > 0) {
 				adaptiveGap = maxGap;
 			}
 		}
+		result.adaptiveGap = adaptiveGap;
 
-		// 1. 检查每日状态
+		// 1. 获取每日状态
 		DailyState state = getDailyState(symbol);
-		if (!state.canTrade()) {
-			result.reason = state.getStatus();
-			result.allowed = false;
-			return result;
-		}
 
-		// 2. 检查暂停时间
+		// 2. 检查暂停时间（必须在 canTrade 之前，否则连续亏损永远无法重置）
 		long pauseUntil = getPauseUntil(symbol);
 		if (System.currentTimeMillis() < pauseUntil) {
 			int remainSec = (int) ((pauseUntil - System.currentTimeMillis()) / 1000);
 			result.reason = "暂停中，剩余" + remainSec + "秒";
 			result.allowed = false;
 			return result;
+		} else if (pauseUntil > 0 && state.consecutiveLosses >= 2) {
+			// 【修复】暂停结束后重置连续亏损计数，避免连续暂停
+			System.out.println("【风控】暂停结束，重置连续亏损计数 (原" + state.consecutiveLosses + "次)");
+			state.consecutiveLosses = 0;
+			saveDailyState(symbol, state);
 		}
+
+		// 3. 检查每日状态
+		if (!state.canTrade()) {
+			result.reason = state.getStatus();
+			result.allowed = false;
+			return result;
+		}
+
+		// 【新增】低波动行情暂停交易（ATR过低时不开仓，按品种配置）
+		if (atrPercent != null && atrPercent.compareTo(config.minAtrForPause) < 0) {
+			result.reason = "低波动行情暂停 (ATR=" + atrPercent.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP) + "% < " + config.minAtrForPause.multiply(new BigDecimal("100")).setScale(1, RoundingMode.HALF_UP) + "%)";
+			result.allowed = false;
+			return result;
+		}
+
+		// 【修改】下跌趋势不再完全禁止，改为评分系统扣分处理
 
 		// 3. 检查持仓数
 		List<TPosition> positions = getPositions(symbol);
@@ -504,17 +601,35 @@ public class DailyProfitTManager {
 			result.allowed = false;
 			return result;
 		}
+		
+		// 【已取消】日交易次数限制删除
+		// if (state.tradeCount >= config.maxTrades) {
+		// 	result.reason = "已达日最大交易次数" + config.maxTrades;
+		// 	result.allowed = false;
+		// 	return result;
+		// }
 
 		// 5. 【已取消】偏离成本线检查 - 放宽限制允许更多交易机会
-		// 只保留间距检查，确保网格间距合理
+		// 【修改】检查与所有已存在仓位的间距，不只看最近一次
 		if (!positions.isEmpty()) {
-			TPosition last = positions.get(positions.size() - 1);
-			BigDecimal priceGap = currentPrice.subtract(last.getEntryPrice())
-					.divide(last.getEntryPrice(), 6, RoundingMode.HALF_UP).abs();
-			if (priceGap.compareTo(adaptiveGap) < 0) {
-				result.reason = "间距不足" + priceGap.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
+			BigDecimal minGap = null;
+			TPosition closestPos = null;
+			
+			for (TPosition pos : positions) {
+				BigDecimal priceGap = currentPrice.subtract(pos.getEntryPrice())
+						.divide(pos.getEntryPrice(), 6, RoundingMode.HALF_UP).abs();
+				
+				// 找到最小的间距
+				if (minGap == null || priceGap.compareTo(minGap) < 0) {
+					minGap = priceGap;
+					closestPos = pos;
+				}
+			}
+			
+			if (minGap != null && minGap.compareTo(adaptiveGap) < 0) {
+				result.reason = "间距不足" + minGap.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
 						+ "% < 要求" + adaptiveGap.multiply(new BigDecimal("100")).setScale(2, RoundingMode.HALF_UP)
-						+ "%";
+						+ "% (最近仓位 " + closestPos.id + " @" + closestPos.getEntryPrice() + ")";
 				result.allowed = false;
 				return result;
 			}
@@ -532,7 +647,23 @@ public class DailyProfitTManager {
 			zhang = maxZhang;
 		}
 
+		// 【V2026.04.21】左侧信号轻仓：绿柱缩窄时仓位减半，控制抄底风险
+		String trend5m = jedisClient.get("trend:5m:" + symbol);
+		boolean isLeftSignal = trend5m != null && (
+			"macd_shrinking".equals(trend5m) ||
+			"macd_shrinking_2".equals(trend5m) ||
+			"macd_shrinking_3".equals(trend5m)
+		);
+		if (isLeftSignal) {
+			zhang = zhang.multiply(new BigDecimal("0.5"));
+			// 不低于最小下单量
+			if (zhang.compareTo(config.minOrder) < 0) {
+				zhang = config.minOrder;
+			}
+		}
+
 		result.allowed = true;
+		result.reason = "通过";
 		result.state = state;
 		result.zhang = zhang;
 		return result;
@@ -545,6 +676,7 @@ public class DailyProfitTManager {
 		public BigDecimal zhang; // 返回建议张数
 		public boolean isTrapped = false; // 是否解套T模式
 		public BigDecimal trapPct = BigDecimal.ZERO; // 被套百分比
+		public BigDecimal adaptiveGap; // 自适应网格间距
 	}
 
 	/**
@@ -555,7 +687,7 @@ public class DailyProfitTManager {
 		DailyState state = getDailyState(symbol);
 		state.lastTradeTime = System.currentTimeMillis();
 		saveDailyState(symbol, state);
-		System.out.println("[T-Concurrent-Prevention] " + symbol + " 立即更新lastTradeTime，防止并发下单");
+		// System.out.println("[T-Concurrent-Prevention] " + symbol + " 立即更新lastTradeTime，防止并发下单");
 	}
 
 	/**
@@ -566,7 +698,7 @@ public class DailyProfitTManager {
 		DailyState state = getDailyState(symbol);
 		state.lastTradeTime = 0;
 		saveDailyState(symbol, state);
-		System.out.println("[T-Concurrent-Prevention] " + symbol + " 重置lastTradeTime，订单失败允许重试");
+		// System.out.println("[T-Concurrent-Prevention] " + symbol + " 重置lastTradeTime，订单失败允许重试");
 	}
 
 	/**
@@ -575,18 +707,12 @@ public class DailyProfitTManager {
 	 * @param atrPercent 当前ATR百分比，用于动态调整止盈止损
 	 */
 	public TPosition openPosition(String symbol, BigDecimal entryPrice, TradeScore score, BigDecimal zhang,
-			BigDecimal atrPercent) {
+			BigDecimal atrPercent, List<cn.exrick.manager.service.util.Candle> candles) {
 		ContractConfig config = getConfig(symbol);
 
 		// ===== 全局资金池检查 =====
-		// 1. 根据可用资金调整张数
-		zhang = adjustZhangByMargin(symbol, zhang);
-		if (zhang.compareTo(config.minOrder) < 0) {
-			System.out.println("[T-Open] " + symbol + " 资金不足，无法开仓（需要" + config.minOrder + "张）");
-			return null;
-		}
-
-		// 2. 记录保证金占用
+		// 【修复】移除重复资金检查，canOpen已经检查过
+		// 直接记录保证金占用
 		recordOpenMargin(symbol, zhang);
 
 		TPosition pos = new TPosition(entryPrice, zhang);
@@ -604,41 +730,21 @@ public class DailyProfitTManager {
 
 		if (config.usePercentMode && config.tpPercent != null && config.slPercent != null) {
 			// ===== 百分比模式：完全按 fund.money 自适应 =====
-			// 基础止盈止损 = 仓位价值 × 百分比
-			actualTP = positionValue.multiply(config.tpPercent);
-			actualSL = positionValue.multiply(config.slPercent);
+			BigDecimal tpRate = config.tpPercent;
+			BigDecimal slRate = config.slPercent;
 
-			// ATR自适应调整：ATR主导，基础保底，3倍上限
+			// 【V2026.04.20】ATR倍数模式：TP = max(ATR×3, 0.2%), SL = ATR×2
 			if (atrPercent != null && atrPercent.compareTo(BigDecimal.ZERO) > 0) {
-				BigDecimal atrValue = atrPercent.multiply(positionValue);
-				// ATR×1.5作为止盈，ATR×1.0作为止损，保持1.5:1盈亏比
-				BigDecimal atrTP = atrValue.multiply(new BigDecimal("1.5"));
-				BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.0"));
-
-				BigDecimal baseTP = positionValue.multiply(config.tpPercent);
-				BigDecimal baseSL = positionValue.multiply(config.slPercent);
-
-				// ATR主导，但保底基础值，上限3倍基础值
-				actualTP = atrTP;
-				actualSL = atrSL;
-
-				// 保底：波动太小用基础值
-				if (actualTP.compareTo(baseTP) < 0) {
-					actualTP = baseTP;
-					actualSL = baseSL;
-					System.out.println("[T-ATR] 波动小，用保底止盈: " + actualTP + "U (ATR" + atrTP + "U)");
-				}
-				// 上限：波动太大限制在3倍基础值
-				BigDecimal maxTP = baseTP.multiply(new BigDecimal("3"));
-				BigDecimal maxSL = baseSL.multiply(new BigDecimal("3"));
-				if (actualTP.compareTo(maxTP) > 0) {
-					actualTP = maxTP;
-					actualSL = maxSL;
-					System.out.println("[T-ATR] 波动大，用上限止盈: " + actualTP + "U (ATR" + atrTP + "U)");
-				} else if (actualTP.compareTo(baseTP) >= 0) {
-					System.out.println("[T-ATR] 用ATR自适应止盈: " + actualTP + "U (基础" + baseTP + "U, ATR×1.5)");
-				}
+				BigDecimal[] dynamic = calculateDynamicTPSL(atrPercent, symbol);
+				tpRate = dynamic[0];
+				slRate = dynamic[1];
+				System.out.println("[T-DynamicTPSL] " + symbol + " ATR=" + atrPercent.multiply(new BigDecimal("100")).setScale(3, RoundingMode.HALF_UP)
+						+ "% 止盈=" + tpRate.multiply(new BigDecimal("100")).setScale(3, RoundingMode.HALF_UP) + "%"
+						+ " 止损=" + slRate.multiply(new BigDecimal("100")).setScale(3, RoundingMode.HALF_UP) + "%");
 			}
+
+			actualTP = positionValue.multiply(tpRate);
+			actualSL = positionValue.multiply(slRate);
 		} else {
 			// ===== 固定金额模式（默认） =====
 			BigDecimal baseTP = config.tpAmount;
@@ -649,8 +755,8 @@ public class DailyProfitTManager {
 			// ATR自适应调整
 			if (atrPercent != null && atrPercent.compareTo(BigDecimal.ZERO) > 0) {
 				BigDecimal atrValue = atrPercent.multiply(entryPrice).multiply(positionValue);
-				BigDecimal atrTP = atrValue.multiply(new BigDecimal("1.5"));
-				BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.0"));
+				BigDecimal atrTP = atrValue.multiply(new BigDecimal("2.5"));
+				BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.5"));
 
 				actualTP = baseTP.max(atrTP);
 				actualSL = baseSL.max(atrSL);
@@ -668,25 +774,25 @@ public class DailyProfitTManager {
 		BigDecimal feeRate = new BigDecimal("0.001"); // 0.1% 总手续费（买+卖）
 		BigDecimal feeCost = positionValue.multiply(feeRate); // 手续费成本
 		BigDecimal minProfit = positionValue.multiply(new BigDecimal("0.0005")); // 最低净利润要求 0.05%
-		BigDecimal minCoverRate = new BigDecimal("0.0015"); // 最低止盈要求 0.15%
+		BigDecimal minCoverRate = new BigDecimal("0.0020"); // 最低止盈要求 0.20%
 		BigDecimal minCoverTP = positionValue.multiply(minCoverRate); // 至少0.15%覆盖手续费
 		BigDecimal netProfit = actualTP.subtract(feeCost); // 净利润
 
 		// 检查是否满足最低0.15%要求
 		if (actualTP.compareTo(minCoverTP) < 0) {
-			System.out.println("[T-FeeWarn] " + symbol + " 止盈=" + actualTP + "U ("
-					+ actualTP.divide(positionValue, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"))
-					+ "%) 低于最低0.15%要求，调整到 " + minCoverTP + "U");
+			// System.out.println("[T-FeeWarn] " + symbol + " 止盈=" + actualTP + "U ("
+			// 		+ actualTP.divide(positionValue, 4, RoundingMode.HALF_UP).multiply(new BigDecimal("100"))
+			// 		+ "%) 低于最低0.15%要求，调整到 " + minCoverTP + "U");
 			actualTP = minCoverTP;
 			// 同时调整止损保持盈亏比
-			actualSL = actualTP.multiply(new BigDecimal("0.667")).setScale(6, RoundingMode.HALF_UP); // 1/1.5
+			actualSL = actualTP.multiply(new BigDecimal("0.6")).setScale(6, RoundingMode.HALF_UP); // 1/1.67
 		}
 
 		// 再检查净利润是否为正
 		if (netProfit.compareTo(minProfit) < 0) {
-			System.out.println("[T-FeeWarn] " + symbol + " 净利润=" + netProfit + "U 不足，调整到覆盖成本+最低利润");
+			// System.out.println("[T-FeeWarn] " + symbol + " 净利润=" + netProfit + "U 不足，调整到覆盖成本+最低利润");
 			actualTP = feeCost.add(minProfit);
-			actualSL = actualTP.multiply(new BigDecimal("0.667")).setScale(6, RoundingMode.HALF_UP);
+			actualSL = actualTP.multiply(new BigDecimal("0.6")).setScale(6, RoundingMode.HALF_UP);
 		}
 
 		// 止盈止损价格 = 入场价 × (1 ± 金额/价值)
@@ -697,16 +803,16 @@ public class DailyProfitTManager {
 		pos.tpPrice = entryPrice.multiply(BigDecimal.ONE.add(tpRate)).setScale(8, RoundingMode.HALF_UP).toString();
 		pos.slPrice = entryPrice.multiply(BigDecimal.ONE.subtract(slRate)).setScale(8, RoundingMode.HALF_UP).toString();
 
-		System.out.println("[T-Open-ATR] " + symbol + " ATR=" + atrPercent + " TP=" + actualTP + "U SL=" + actualSL
-				+ "U 手续费=" + feeCost + "U 净利润=" + netProfit + "U" + "  止盈：" + pos.tpPrice + "(" + tpRate + ")" + "/"
-				+ "止损：" + pos.slPrice + "(" + slRate + ")");
+		// System.out.println("[T-Open-ATR] " + symbol + " ATR=" + atrPercent + " TP=" + actualTP + "U SL=" + actualSL
+		// 		+ "U 手续费=" + feeCost + "U 净利润=" + netProfit + "U" + "  止盈：" + pos.tpPrice + "(" + tpRate + ")" + "/"
+		// 		+ "止损：" + pos.slPrice + "(" + slRate + ")");
 
 		List<TPosition> positions = getPositions(symbol);
-		System.out.println(pos);
+		// System.out.println(pos);
 		positions.add(pos);
-		System.out.println("size::::" + positions.size());
+		// System.out.println("size::::" + positions.size());
 		savePositions(symbol, positions);
-		System.out.println("======================" + getPositions(symbol).size());
+		// System.out.println("======================" + getPositions(symbol).size());
 
 		DailyState state = getDailyState(symbol);
 		state.lastTradeTime = System.currentTimeMillis();
@@ -727,8 +833,8 @@ public class DailyProfitTManager {
 		ContractConfig config = getConfig(symbol);
 
 		for (TPosition pos : positions) {
-			System.out.println("=======仓位检测=========");
-			System.out.println(new JSONObject(pos).toString());
+			// System.out.println("=======仓位检测=========");
+			// System.out.println(new JSONObject(pos).toString());
 			if (!"open".equals(pos.status))
 				continue;
 
@@ -741,83 +847,77 @@ public class DailyProfitTManager {
 				pos.setMaxProfit(pnlAmount);
 			}
 
-			// 计算ATR自适应止盈止损（基于开仓时保存的ATR）
-			BigDecimal posAtr = new BigDecimal(pos.atrPercent);
-//			BigDecimal baseTP = config.tpAmount;
-//			BigDecimal baseSL = config.slAmount.abs();
+			BigDecimal actualTP;
+			BigDecimal actualSL;
 
-			// 基础值
-			BigDecimal baseTP = pos.getValue().multiply(config.tpPercent);
-			BigDecimal baseSL = pos.getValue().multiply(config.slPercent);
+			// 【V2026.04.20】优先使用开仓时保存的动态止盈止损价格
+			if (pos.tpPrice != null && pos.slPrice != null
+					&& !pos.tpPrice.equals(pos.entryPrice)
+					&& !pos.slPrice.equals(pos.entryPrice)) {
+				BigDecimal tpPrice = new BigDecimal(pos.tpPrice);
+				BigDecimal slPrice = new BigDecimal(pos.slPrice);
 
-			BigDecimal actualTP = baseTP;
-			BigDecimal actualSL = baseSL.negate();
+				// 止盈金额 = (止盈价 - 成本价) / 成本价 × 仓位价值
+				BigDecimal tpRate = tpPrice.subtract(entry).divide(entry, 6, RoundingMode.HALF_UP);
+				actualTP = tpRate.multiply(pos.getValue());
 
-			if (posAtr.compareTo(BigDecimal.ZERO) > 0) {
-				// 使用开仓时的ATR计算动态目标
-				BigDecimal atrValue = posAtr.multiply(pos.getEntryPrice()).multiply(pos.getZhang())
-						.multiply(config.valuePerZhang);
-				BigDecimal atrTP = atrValue.multiply(new BigDecimal("1.5"));
-				BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.0")).negate();
+				// 止损金额 = (成本价 - 止损价) / 成本价 × 仓位价值
+				BigDecimal slRate = entry.subtract(slPrice).divide(entry, 6, RoundingMode.HALF_UP);
+				actualSL = slRate.multiply(pos.getValue()).negate();
+			} else {
+				// 回退到原有ATR计算
+				BigDecimal posAtr = new BigDecimal(pos.atrPercent);
+				BigDecimal baseTP = pos.getValue().multiply(config.tpPercent);
+				BigDecimal baseSL = pos.getValue().multiply(config.slPercent);
 
-				// ATR主导，保底基础值，上限3倍基础值（与开仓逻辑一致）
-				actualTP = atrTP;
-				actualSL = atrSL;
+				actualTP = baseTP;
+				actualSL = baseSL.negate();
 
-				// 保底：波动太小用基础值
-				if (actualTP.compareTo(baseTP) < 0) {
-					actualTP = baseTP;
-					actualSL = baseSL.negate();
-				}
-				// 上限：波动太大限制在3倍基础值
-				BigDecimal maxTP = baseTP.multiply(new BigDecimal("3"));
-				BigDecimal maxSL = baseSL.multiply(new BigDecimal("3")).negate();
-				if (actualTP.compareTo(maxTP) > 0)
-					actualTP = maxTP;
-				if (actualSL.compareTo(maxSL) < 0)
-					actualSL = maxSL;
-			}
-
-			// 解套T和标准T使用相同的ATR动态计算（统一风控标准）
-			if (pos.rescueCount > 0) {
-				// 解套T与标准T一致：止盈ATR×1.5，止损ATR×1.0，保持1.5:1盈亏比
 				if (posAtr.compareTo(BigDecimal.ZERO) > 0) {
 					BigDecimal atrValue = posAtr.multiply(pos.getEntryPrice()).multiply(pos.getZhang())
 							.multiply(config.valuePerZhang);
-					BigDecimal atrTP = atrValue.multiply(new BigDecimal("1.5")); // ATR×1.5
-					BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.0")).negate(); // ATR×1.0
+					BigDecimal atrTP = atrValue.multiply(new BigDecimal("2.5"));
+					BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.5")).negate();
 
-					// ATR主导，保底基础值，上限3倍基础值（与标准T完全一致）
-					actualTP = atrTP;
-					actualSL = atrSL;
+					BigDecimal minTP = pos.getValue().multiply(new BigDecimal("0.02"));
+					BigDecimal minSL = pos.getValue().multiply(new BigDecimal("0.01")).negate();
 
-					// 保底：波动太小用基础值
-					if (actualTP.compareTo(baseTP) < 0) {
-						actualTP = baseTP;
-						actualSL = baseSL.negate();
+					actualTP = atrTP.max(minTP);
+					actualSL = atrSL.min(minSL);
+				}
+
+				if (pos.rescueCount > 0) {
+					if (posAtr.compareTo(BigDecimal.ZERO) > 0) {
+						BigDecimal atrValue = posAtr.multiply(pos.getEntryPrice()).multiply(pos.getZhang())
+								.multiply(config.valuePerZhang);
+						BigDecimal atrTP = atrValue.multiply(new BigDecimal("2.5"));
+						BigDecimal atrSL = atrValue.multiply(new BigDecimal("1.5")).negate();
+
+						BigDecimal minTP = pos.getValue().multiply(new BigDecimal("0.02"));
+						BigDecimal minSL = pos.getValue().multiply(new BigDecimal("0.01")).negate();
+
+						actualTP = atrTP.max(minTP);
+						actualSL = atrSL.min(minSL);
+
+						System.out.println("[T-Rescue] 解套ATR模式 ATR=" + posAtr + " 止盈=" + actualTP + "U 止损=" + actualSL + "U");
 					}
-					// 上限：波动太大限制在3倍基础值
-					BigDecimal maxTP = baseTP.multiply(new BigDecimal("3"));
-					BigDecimal maxSL = baseSL.multiply(new BigDecimal("3")).negate();
-					if (actualTP.compareTo(maxTP) > 0)
-						actualTP = maxTP;
-					if (actualSL.compareTo(maxSL) < 0)
-						actualSL = maxSL;
-
-					System.out
-							.println("[T-Rescue] 解套ATR模式 ATR=" + posAtr + " 止盈=" + actualTP + "U 止损=" + actualSL + "U");
 				}
 			}
 
-			// 1. 止损检查
-			if (pnlAmount.compareTo(actualSL) <= 0) {
-				String reason = pos.rescueCount > 0 ? "解套止损" : "止损";
-				signals.add(new TExitSignal(pos.id, "SL", currentPrice, pnlAmount,
-						reason + pnlAmount.setScale(2, RoundingMode.HALF_UP) + "U (目标" + actualSL + "U)"));
-				pos.status = "closing";
-				continue;
-			}
+				// 【保本机制】当最大盈利 >= |止损目标| 时，止损线上移到成本价
+				if (pos.getMaxProfit().compareTo(actualSL.abs()) >= 0) {
+					actualSL = BigDecimal.ZERO;
+				}
 
+				// 1. 止损检查
+				if (pnlAmount.compareTo(actualSL) <= 0) {
+					String reason = pos.rescueCount > 0 ? "解套止损" : "止损";
+					String detail = actualSL.compareTo(BigDecimal.ZERO) == 0 ? "保本止损" : reason;
+					signals.add(new TExitSignal(pos.id, "SL", currentPrice, pnlAmount,
+							detail + pnlAmount.setScale(2, RoundingMode.HALF_UP) + "U (目标" + actualSL + "U)"));
+					pos.status = "closing";
+					continue;
+				}
 			// 2. 止盈检查
 			if (pnlAmount.compareTo(actualTP) >= 0) {
 				String reason = pos.rescueCount > 0 ? "解套止盈" : "止盈";
@@ -826,6 +926,17 @@ public class DailyProfitTManager {
 				pos.status = "closing";
 				continue;
 			}
+
+				// 【V2026.05.29】关闭移动止盈，只用固定止盈/止损
+				// 原移动止盈逻辑已注释，避免提前截断利润导致盈亏比恶化
+				/*
+				String trend5m = jedisClient.get("trend:5m:" + symbol);
+				boolean macdStrong = trend5m != null && (
+					"macd_golden".equals(trend5m) ||
+					"macd_expanding".equals(trend5m)
+				);
+				if (!macdStrong) { ... }
+				*/
 
 		}
 
@@ -852,7 +963,7 @@ public class DailyProfitTManager {
 
 		// 计算盈亏（使用signal中的盈亏金额）
 		BigDecimal grossPnl = signal.pnlRate; // 这是盈亏金额（U）
-		BigDecimal fee = target.getValue().multiply(new BigDecimal("0.002")); // 0.2%手续费
+		BigDecimal fee = target.getValue().multiply(new BigDecimal("0.001")); // 0.1%总手续费（买0.05%+卖0.05%）
 		BigDecimal netPnl = grossPnl.subtract(fee);
 
 		// 更新每日状态
@@ -865,11 +976,12 @@ public class DailyProfitTManager {
 			state.consecutiveLosses = 0; // 重置连续亏损
 		} else {
 			state.lossCount++;
-			// state.consecutiveLosses++;
+			state.consecutiveLosses++;
 			// 连续2亏，暂停30分钟
-//			if (state.consecutiveLosses >= 2) {
-//				setPauseUntil(symbol, System.currentTimeMillis() + 30 * 60 * 1000);
-//			}
+			if (state.consecutiveLosses >= 2) {
+				setPauseUntil(symbol, System.currentTimeMillis() + 10 * 60 * 1000);
+				System.out.println("【风控】连续" + state.consecutiveLosses + "次亏损，暂停30分钟");
+			}
 		}
 
 		// 检查是否达成目标或触及止损
@@ -1042,7 +1154,7 @@ public class DailyProfitTManager {
 			return BigDecimal.ZERO; // 资金不足以开最小单
 		}
 
-		System.out.println("[T-Margin] " + symbol + " 资金不足，调整张数: " + zhang + "→" + maxZhang);
+		// System.out.println("[T-Margin] " + symbol + " 资金不足，调整张数: " + zhang + "→" + maxZhang);
 		return maxZhang;
 	}
 
@@ -1052,7 +1164,7 @@ public class DailyProfitTManager {
 	public void recordOpenMargin(String symbol, BigDecimal zhang) {
 		BigDecimal margin = calculateMargin(symbol, zhang);
 		updateUsedMargin(margin);
-		System.out.println("[T-Margin] " + symbol + " 开仓占用: " + margin + "U, 总计: " + getTotalUsedMargin() + "U");
+		// System.out.println("[T-Margin] " + symbol + " 开仓占用: " + margin + "U, 总计: " + getTotalUsedMargin() + "U");
 	}
 
 	/**
@@ -1061,7 +1173,7 @@ public class DailyProfitTManager {
 	public void recordCloseMargin(String symbol, BigDecimal zhang) {
 		BigDecimal margin = calculateMargin(symbol, zhang);
 		updateUsedMargin(margin.negate());
-		System.out.println("[T-Margin] " + symbol + " 平仓释放: " + margin + "U, 剩余: " + getTotalUsedMargin() + "U");
+		// System.out.println("[T-Margin] " + symbol + " 平仓释放: " + margin + "U, 剩余: " + getTotalUsedMargin() + "U");
 	}
 
 	/**
@@ -1108,10 +1220,10 @@ public class DailyProfitTManager {
 	}
 
 	private void savePositions(String symbol, List<TPosition> positions) {
-		System.out.println("[Debug-SAVE] symbol=" + symbol + ", positions.size=" + positions.size());
+		// System.out.println("[Debug-SAVE] symbol=" + symbol + ", positions.size=" + positions.size());
 
 		if (symbol == null || positions == null) {
-			System.out.println("[Debug-SAVE] 参数为空，跳过");
+			// System.out.println("[Debug-SAVE] 参数为空，跳过");
 			return;
 		}
 
@@ -1119,16 +1231,16 @@ public class DailyProfitTManager {
 			String key = KEY_POSITIONS.replace("{symbol}", symbol);
 			String json = JSONUtil.toJsonStr(positions);
 
-			System.out.println("[Debug-SAVE] key=" + key);
-			System.out.println("[Debug-SAVE] json长度=" + json.length() + ", 前100字符="
-					+ json.substring(0, Math.min(100, json.length())));
+			// System.out.println("[Debug-SAVE] key=" + key);
+			// System.out.println("[Debug-SAVE] json长度=" + json.length() + ", 前100字符="
+			// 		+ json.substring(0, Math.min(100, json.length())));
 
 			String result = jedisClient.set(key, json);
-			System.out.println("[Debug-SAVE] redis set 返回=" + result);
+			// System.out.println("[Debug-SAVE] redis set 返回=" + result);
 
 			// 立即验证
 			String verify = jedisClient.get(key);
-			System.out.println("[Debug-SAVE] 立即验证读取=" + (verify != null ? "成功,长度=" + verify.length() : "失败"));
+			// System.out.println("[Debug-SAVE] 立即验证读取=" + (verify != null ? "成功,长度=" + verify.length() : "失败"));
 
 		} catch (Exception e) {
 			System.out.println("[Debug-SAVE] 异常: " + e.getClass().getName() + ": " + e.getMessage());
@@ -1136,22 +1248,22 @@ public class DailyProfitTManager {
 		}
 	}
 
-	private List<TPosition> getPositions(String symbol) {
-		System.out.println("[Debug-GET] symbol=" + symbol);
+	List<TPosition> getPositions(String symbol) {
+		// System.out.println("[Debug-GET] symbol=" + symbol);
 
 		try {
 			String key = KEY_POSITIONS.replace("{symbol}", symbol);
-			System.out.println("[Debug-GET] key=" + key);
+			// System.out.println("[Debug-GET] key=" + key);
 
 			String val = jedisClient.get(key);
-			System.out.println("[Debug-GET] redis get 返回=" + (val != null ? "非空,长度=" + val.length() : "NULL"));
+			// System.out.println("[Debug-GET] redis get 返回=" + (val != null ? "非空,长度=" + val.length() : "NULL"));
 
 			if (val == null || val.isEmpty()) {
 				return new ArrayList<>();
 			}
 
 			List<TPosition> list = JSONUtil.toList(val, TPosition.class);
-			System.out.println("[Debug-GET] 反序列化成功, size=" + list.size());
+			// System.out.println("[Debug-GET] 反序列化成功, size=" + list.size());
 			return list;
 
 		} catch (Exception e) {
@@ -1347,6 +1459,55 @@ public class DailyProfitTManager {
 	}
 
 	/**
+	 * 【新增】判断趋势方向（基于5周期和10周期均线）
+	 * @return "up" 上升, "down" 下降, "sideway" 震荡
+	 */
+	public String getTrendDirection(String symbol) {
+		List<PriceData> prices = getPriceHistory(symbol);
+		if (prices.size() < 10) {
+			return "unknown"; // 数据不足
+		}
+		
+		int len = prices.size();
+		int shortPeriod = Math.min(20, len);
+		int longPeriod = Math.min(40, len);
+		
+		List<PriceData> recentShort = prices.subList(len - shortPeriod, len);
+		List<PriceData> recentLong = prices.subList(len - longPeriod, len);
+		
+		BigDecimal maShort = BigDecimal.ZERO;
+		BigDecimal maLong = BigDecimal.ZERO;
+		
+		for (PriceData p : recentShort) {
+			maShort = maShort.add(p.close);
+		}
+		maShort = maShort.divide(new BigDecimal(shortPeriod), 8, RoundingMode.HALF_UP);
+		
+		for (PriceData p : recentLong) {
+			maLong = maLong.add(p.close);
+		}
+		maLong = maLong.divide(new BigDecimal(longPeriod), 8, RoundingMode.HALF_UP);
+		
+		BigDecimal currentPrice = prices.get(len - 1).close;
+		
+		// 【横盘保护】长周期 tick 内波动极小（<0.03%）时，强制视为震荡
+		BigDecimal maxPrice = recentLong.stream().map(p -> p.close).max(BigDecimal::compareTo).orElse(currentPrice);
+		BigDecimal minPrice = recentLong.stream().map(p -> p.close).min(BigDecimal::compareTo).orElse(currentPrice);
+		BigDecimal priceRange = maxPrice.subtract(minPrice).divide(currentPrice, 6, RoundingMode.HALF_UP);
+		if (priceRange.compareTo(new BigDecimal("0.0003")) < 0) {
+			return "sideway";
+		}
+		
+		if (currentPrice.compareTo(maShort) > 0 && maShort.compareTo(maLong) > 0) {
+			return "up";
+		} else if (currentPrice.compareTo(maShort) < 0 && maShort.compareTo(maLong) < 0) {
+			return "down";
+		} else {
+			return "sideway";
+		}
+	}
+
+	/**
 	 * 强制平掉所有T持仓（日终强制平仓）
 	 */
 	@Autowired
@@ -1386,7 +1547,7 @@ public class DailyProfitTManager {
 				// 计算单个仓位盈亏
 				BigDecimal pnlRate = exitPrice.subtract(entryPrice).divide(entryPrice, 6, RoundingMode.HALF_UP);
 				BigDecimal pnlAmount = pnlRate.multiply(pos.getValue());
-				BigDecimal fee = pos.getValue().multiply(new BigDecimal("0.002"));
+				BigDecimal fee = pos.getValue().multiply(new BigDecimal("0.001")); // 0.1%总手续费
 				BigDecimal netPnl = pnlAmount.subtract(fee);
 				totalPnl = totalPnl.add(netPnl);
 

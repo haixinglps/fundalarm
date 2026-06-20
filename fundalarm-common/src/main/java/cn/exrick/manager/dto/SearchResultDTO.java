@@ -2,6 +2,7 @@ package cn.exrick.manager.dto;
 
 import java.io.Serializable;
 import java.util.List;
+import java.util.Map;
 
 import cn.exrick.manager.pojo.Taolu3Video;
 import cn.exrick.manager.pojo.Waiwang2Video;
@@ -23,6 +24,7 @@ public class SearchResultDTO implements Serializable {
     private List<WanwuVideo> wanwuVideos;    // 玩物 (ww)
     private List<Taolu3Video> taolu3Videos;  // 淘露 (tl)
     private List<WaiwangVideo> waiwangVideos; // 电报 (tg)
+    private List<Map<String, Object>> channelVideos; // 频道搜索 (ch) - isearch结果
     
     // 统计信息
     private long zmqTotal;
@@ -30,6 +32,7 @@ public class SearchResultDTO implements Serializable {
     private long wanwuTotal;
     private long taolu3Total;
     private long waiwangTotal;
+    private long channelTotal; // 频道搜索总数
     
     // 搜索关键词
     private String keyword;
@@ -87,6 +90,15 @@ public class SearchResultDTO implements Serializable {
     public long getWaiwangTotal() { return waiwangTotal; }
     public void setWaiwangTotal(long waiwangTotal) { this.waiwangTotal = waiwangTotal; }
     
+    public List<Map<String, Object>> getChannelVideos() { return channelVideos; }
+    public void setChannelVideos(List<Map<String, Object>> channelVideos) { 
+        this.channelVideos = channelVideos;
+        this.channelTotal = channelVideos != null ? channelVideos.size() : 0;
+    }
+    
+    public long getChannelTotal() { return channelTotal; }
+    public void setChannelTotal(long channelTotal) { this.channelTotal = channelTotal; }
+    
     public String getKeyword() { return keyword; }
     public void setKeyword(String keyword) { this.keyword = keyword; }
     
@@ -94,7 +106,7 @@ public class SearchResultDTO implements Serializable {
      * 获取总数量
      */
     public long getTotalCount() {
-        return zmqTotal + waiwang2Total + wanwuTotal + taolu3Total + waiwangTotal;
+        return zmqTotal + waiwang2Total + wanwuTotal + taolu3Total + waiwangTotal + channelTotal;
     }
     
     /**
@@ -106,7 +118,7 @@ public class SearchResultDTO implements Serializable {
     
     @Override
     public String toString() {
-        return String.format("SearchResultDTO[keyword=%s, zmq=%d, bc=%d, ww=%d, tl=%d, tg=%d]", 
-            keyword, zmqTotal, waiwang2Total, wanwuTotal, taolu3Total, waiwangTotal);
+        return String.format("SearchResultDTO[keyword=%s, zmq=%d, bc=%d, ww=%d, tl=%d, tg=%d, ch=%d]", 
+            keyword, zmqTotal, waiwang2Total, wanwuTotal, taolu3Total, waiwangTotal, channelTotal);
     }
 }

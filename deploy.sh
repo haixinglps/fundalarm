@@ -76,7 +76,7 @@ else
 fi
 
 # 6. 检查WAR文件
-WAR_FILE="$PROJECT_DIR/robotium-fundalarm-service/target/fundalarm-manager-service-1.0-SNAPSHOT.war"
+WAR_FILE="$PROJECT_DIR/robotium-fundalarm-service/target/fundalarmai-manager-service-1.0-SNAPSHOT.war"
 if [ ! -f "$WAR_FILE" ]; then
     log_error "WAR文件未找到: $WAR_FILE"
     exit 1
@@ -136,12 +136,15 @@ fi
 cp "$WAR_FILE" "$TOMCAT_WEBAPPS/ROOT.war"
 log_info "WAR文件已复制到 webapps/ROOT.war"
 
-# 10. 启动Tomcat
+# 10. 启动Tomcat（展开WAR）
 log_info ""
 log_info "启动 Tomcat..."
 cd "$TOMCAT_HOME/bin"
 chmod +x *.sh
 ./startup.sh
+
+# 11. 等待展开完成
+sleep 15
 
 # 11. 等待启动
 log_info ""

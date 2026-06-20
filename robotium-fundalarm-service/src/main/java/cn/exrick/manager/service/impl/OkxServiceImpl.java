@@ -73,7 +73,7 @@ public class OkxServiceImpl implements OkxService {
 		SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
 		format.setTimeZone(TimeZone.getTimeZone("UTC"));
 		String timestamp = format.format(new Date());
-		System.out.println("时间：" + timestamp);
+		// System.out.println("时间：" + timestamp);
 		String sign = "";
 		try {
 			sign = SignatureGenerator.generateSignature(timestamp, method, path, body, apiSecret);
@@ -83,7 +83,7 @@ public class OkxServiceImpl implements OkxService {
 			return null;
 		}
 
-		System.out.println("key:" + apiKey);
+		// System.out.println("key:" + apiKey);
 		headers.put("OK-ACCESS-KEY", apiKey);
 		headers.put("OK-ACCESS-SIGN", sign);
 		headers.put("OK-ACCESS-TIMESTAMP", timestamp);
