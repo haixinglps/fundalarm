@@ -1988,6 +1988,30 @@ CREATE TABLE vip_payment (
 );
 ```
 
+**用户钱包/VIP表**: `tb_wallet`（MySQL test数据库）
+```sql
+CREATE TABLE tb_wallet (
+    Id INT AUTO_INCREMENT PRIMARY KEY,
+    uid VARCHAR(50) NOT NULL COMMENT 'Telegram用户ID',
+    balance INT DEFAULT 0 COMMENT '余额（分）',
+    created DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    version INT DEFAULT 0,
+    nickname VARCHAR(200) COMMENT 'Telegram昵称',
+    vip INT DEFAULT 0 COMMENT 'VIP等级（0=非VIP, 1=VIP）',
+    vid_end_time DATETIME COMMENT 'VIP到期时间',
+    user1 VARCHAR(200),
+    user2 VARCHAR(200),
+    user3 VARCHAR(200),
+    user4 VARCHAR(200),
+    user5 VARCHAR(200),
+    user6 VARCHAR(200),
+    feiji_username VARCHAR(200) COMMENT '飞机网盘用户名',
+    feiji_password VARCHAR(200) COMMENT '飞机网盘密码'
+);
+```
+> `tb_wallet.vid_end_time` 是 VIP 到期提醒系统的核心字段。当该字段 <= 当前时间+7天时触发提醒。
+
 **通知策略**:
 1. 私聊通知（Telethon mybot_collect）→ 触发FloodWait则停止
 2. 群话题通知（topic_id=6）→ @未缴费成员
@@ -3083,15 +3107,65 @@ asyncio.run(analyze_members())
 
 ---
 
-### 自动化月租管理（待实现）
+### VIP 到期提醒系统（已落地）
 
-**功能规划**:
-1. **自动检测到期成员** - 每日检查哪些成员满30天未缴费
-2. **私聊提醒** - 自动发送缴费提醒消息
-3. **缴费记录** - 记录谁已交、谁未交
-4. **到期踢人** - 逾期未缴费自动移除群聊
+**脚本位置**: `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/send_vip_expire_reminders.py`
 
-**提醒消息模板**:
+**数据来源**: `test.tb_wallet.vid_end_time`
+
+**功能**: 查询 `tb_wallet` 表中 `vid_end_time` 字段，自动分类并批量私聊发送续费提醒。
+
+**分类规则**:
+| 状态 | 天数 | 消息前缀 | 是否发送 |
+|------|------|----------|----------|
+| 🔴 已过期 | < 0 | ⚠️ 您的 VIP 会员已过期 | ✅ 发送 |
+| 🟠 今天到期 | = 0 | ⏰ 您的 VIP 会员今天到期 | ✅ 发送 |
+| 🟡 3天内到期 | 1-3 | 🔔 VIP 会员即将到期 | ✅ 发送 |
+| 🟢 4-7天内到期 | 4-7 | 📢 VIP 会员到期提醒 | ❌ 不发送（避免骚扰） |
+
+**用法**:
+```bash
+cd /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main
+
+# 仅查询名单（不发送）
+python3 send_vip_expire_reminders.py
+
+# 查询 + 批量发送私聊提醒
+python3 send_vip_expire_reminders.py --send
+```
+
+**配置**:
+```python
+API_ID = 20915309
+API_HASH = '4c04c9de1a0da46fc9989651230b5f6b'
+SESSION_PATH = 'mybot_collect'  # Telethon session
+EXCLUDE_UIDS = {'1399330035', '6105292507'}  # 不提醒的 UID
+```
+
+**发送策略**:
+- 间隔 2 秒/条，避免 FloodWait
+- 捕获 `FloodWaitError`，自动等待后重试一次
+- 仅发送给 已过期 + 今天到期 + 3天内到期 的用户
+
+**历史发送记录**:
+- 2026-06-07: 成功发送 46 人（已过期 32 + 今天到期 5 + 3天内 9），无失败
+
+---
+
+### 自动化月租管理（旧方案，基于 vip_payment）
+
+**脚本位置**: `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/vip_expire_check.py`
+
+**功能**: 基于 `vip_payment` 表和 Telegram 群成员加入时间分析到期状态，支持群话题提醒 + 私聊提醒。
+
+**用法**:
+```bash
+python3 vip_expire_check.py              # 仅输出名单
+python3 vip_expire_check.py --send       # 输出 + 发送到群话题
+python3 vip_expire_check.py --send --dm  # 输出 + 群话题 + 私聊到期用户
+```
+
+**提醒消息模板（旧）**:
 ```
 【VIP群月租提醒】
 
@@ -4632,6 +4706,98 @@ await client(request)
 | `QQBotRealDataProcessor.java` | 同上 |
 | `donwloadFileAndSendToUser.py` | `info[13]`/`info[14]` → `info[15]`/`info[16]` |
 
+#### 2026-06-07: wget 下载 PikPak 直链卡死
+
+**根因**: `download_mp4_with_cmd()` 中 `subprocess.run()` 没有 `timeout` 参数，且 wget 默认无限重试。PikPak 失效直链导致 wget 无限重试，阻塞整个 asyncio 事件循环。
+
+**修复** (`donwloadFileAndSendToUser.py`):
+```python
+# 1. subprocess.run 加兜底超时
+def download_mp4_with_cmd(m3u8_path, output_mp4_path):
+    cmd = f"wget --tries=3 --timeout=60 ... -O '{output_mp4_path}' '{m3u8_path}'"
+    try:
+        result = subprocess.run(cmd, shell=True, check=True, encoding='utf-8', timeout=600)
+    except subprocess.TimeoutExpired:
+        print("[MP4 Download] wget 下载超时 (600s)，放弃此任务")
+        if os.path.exists(output_mp4_path):
+            os.remove(output_mp4_path)
+        return None
+```
+
+**要点**:
+- `wget --tries=3 --timeout=60`：限制 wget 自身最多重试 3 次，单次连接超时 60 秒
+- `subprocess.run(timeout=600)`：兜底保护，整个 wget 进程最多运行 10 分钟
+- 超时后自动删除不完整文件，返回 `None`，主循环继续处理下一个任务
+
+#### 2026-06-08: Telegram Preview Album 视频手机端脱离
+
+**现象**: Preview album（封面+4截图+60秒预览视频）在电脑端显示正常，但手机端视频偶尔从 album 中脱离，变成独立消息。
+
+**根因分析**:
+1. `send_file` 文件路径列表方式让 Telethon 自动检测类型，但视频缺少缩略图时手机客户端渲染不稳定
+2. `send_file` 的 `attributes` 参数会被应用到 album 中**所有文件**，导致图片也被强制附加 `DocumentAttributeVideo`
+3. `force_document=True` 对文件列表中的图片不生效（Telethon 内部 `is_image` 检测后仍作为 Photo 上传）
+4. 手动 `InputMediaUploadedDocument` / `InputMediaUploadedPhoto` 对象列表虽然服务器端 grouped_id 正确，但缺少 `thumb` 时手机端仍可能脱离
+
+**参考 `live_monitor.py` 的 Bot API 方案**:
+`live_monitor.py` 使用 Telegram Bot API `sendMediaGroup`，其关键成功因素：
+- 明确指定每个媒体的 `type`（`photo` / `video`）
+- 视频必须带 `thumb` 缩略图（ffmpeg 提取第一帧）
+- 通过 multipart/form-data 上传文件
+
+**最终修复** (`donwloadFileAndSendToUser.py`):
+```python
+from telethon.tl.types import InputMediaUploadedPhoto, InputMediaUploadedDocument, DocumentAttributeVideo
+
+# 1. 为视频生成缩略图（参考 live_monitor.py）
+thumb_path = preview_path.replace('.mp4', '_thumb.jpg')
+subprocess.run([
+    "ffmpeg", "-y", "-i", preview_path,
+    "-ss", "00:00:00", "-vframes", "1", thumb_path
+], timeout=30)
+
+# 2. 手动构建 InputMedia 列表：视频第一条 + 图片在后
+async def _build_media_list():
+    photo_media = []
+    video_media = None
+    for f in album_files:
+        uploaded = await client.upload_file(f)
+        if f == preview_path:
+            vd, vw, vh = get_video_info(f)
+            attrs = [DocumentAttributeVideo(duration=vd, w=vw, h=vh, supports_streaming=True)]
+            thumb_uploaded = None
+            if thumb_path and os.path.exists(thumb_path):
+                thumb_uploaded = await client.upload_file(thumb_path)
+            video_media = InputMediaUploadedDocument(
+                file=uploaded,
+                mime_type='video/mp4',
+                attributes=attrs,
+                thumb=thumb_uploaded  # ← 关键：缩略图防止手机端脱离
+            )
+        else:
+            photo_media.append(InputMediaUploadedPhoto(uploaded))
+    media_list = [video_media] + photo_media  # 视频放第一条
+    return media_list
+
+# 3. 分别发送到两个频道（避免 InputFile 复用问题）
+media_list = await _build_media_list()
+await client.send_file('tlshare', media_list, caption=preview_caption)
+media_list2 = await _build_media_list()
+await client.send_file('wwshareforworld', media_list2, caption=preview_caption)
+```
+
+**配套修复**:
+- **图片去透明通道**: `create_preview_album()` 中封面/截图如果是 PNG（含 alpha），用 PIL `convert('RGB')` 转为 JPEG，防止 Telegram album 报 `has_transparency_data` 错误
+- **缩略图清理**: 发送完成后删除 `*_thumb.jpg` 临时文件
+
+**关键结论**:
+| 方案 | 结果 |
+|------|------|
+| `send_file` 文件路径列表 | 手机端偶尔脱离 |
+| `send_file` + `force_document=True` | 对文件列表不生效 |
+| 手动 `InputMedia` 无缩略图 | 服务器端正确，手机端仍脱离 |
+| **手动 `InputMedia` + `thumb` + video 第一条** | ✅ 电脑+手机端均正常 |
+
 ### 进程管理
 
 ```bash
@@ -4958,4 +5124,907 @@ qqbot.clientSecret=JFB85310zz01358BFJOTZgnv3CLVfq1D
 - 记事本发送必须使用用户搜索时分配的机器人（否则报 `code:11255`）
 
 ---
-*最后更新: 2026-05-22*
+
+## 紧急修复与经验总结（V2026.05.28）
+
+### 1. 品种差异化止损floor + Symbol匹配bug修复
+
+**问题1**: 统一止损floor 0.12%在低波动行情下太紧，XAU频繁被扫。
+**问题2**: 代码判断`symbol.contains("XAUT")`，但OKX合约代码是`XAU-USDT-SWAP`，导致XAU止损未生效。
+
+**修改** (`DailyProfitTManager.java`):
+```java
+public static BigDecimal[] calculateDynamicTPSL(BigDecimal atrPercent, String symbol) {
+    // ...
+    if (symbol != null && (symbol.contains("XAU") || symbol.contains("XAUT"))) {
+        slFloor = new BigDecimal("0.0020");  // XAU 0.20%
+    } else if (symbol != null && symbol.contains("DOGE")) {
+        slFloor = new BigDecimal("0.0025");  // DOGE 0.25%
+    } else {
+        slFloor = new BigDecimal("0.0012");  // 其他 0.12%
+    }
+}
+```
+
+| 品种 | 止盈floor | 止损floor | 盈亏比(ATR=0.10%) |
+|------|----------|----------|------------------|
+| XAU | 0.25% | **0.20%** | **1.25 : 1** |
+| DOGE | 0.25% | 0.25% | 1.00 : 1（被floor锁死） |
+
+**部署**: `DailyProfitTManager.class` - 41KB (2026-05-29 02:49)
+
+---
+
+### 2. XAU ATR门槛大幅提高
+
+**问题**: XAU原门槛过低（暂停0.01%，评分0.02%），ATR 0.07%时仍在开仓，但盈亏比倒挂。
+
+**修改** (`DailyProfitTManager.java`):
+```java
+xautConfig.minAtrForPause = new BigDecimal("0.0010"); // 0.10%（原0.01%）
+xautConfig.minAtrForScore = new BigDecimal("0.0008"); // 0.08%（原0.02%）
+```
+
+**效果**: XAU ATR < 0.10%时完全暂停T交易，避免低波动环境下无效交易。
+
+---
+
+### 3. 关闭移动止盈（Trailing Stop）
+
+**问题**: 移动止盈严重损耗盈亏比。约40%交易被移动止盈截断，平均盈利只有固定止盈的60-70%。
+
+**实际盈亏比测算**:
+| 品种 | 理论盈亏比 | 移动止盈损耗 | 实际盈亏比 |
+|------|-----------|-------------|-----------|
+| XAU | 1.25 : 1 | ×0.65 | **0.81 : 1** ❌ |
+| DOGE | 1.67 : 1 | ×0.70 | **1.17 : 1** ⚠️ |
+
+**修改** (`DailyProfitTManager.java`):
+```java
+// 【V2026.05.29】关闭移动止盈，只用固定止盈/止损
+// 原MACD减弱时移动止盈逻辑已注释
+```
+
+**结果**: 现在理论盈亏比 = 实际盈亏比，到价即平，不再提前截断利润。
+
+---
+
+### 4. 虚拟仓位清理（DOGE全平后）
+
+**背景**: DOGE在OKX已全平（盈亏平衡价触发），但数据库残留虚拟仓位。
+
+**操作**:
+- `fund_doge_swap`: 删除id=501虚拟仓位，清零id=116残留，iscurrent=1保留id=1（buyprice=0.100266）
+- `fund_0_0_xaut_swap`: 删除id=501虚拟仓位，清零id=412残留，iscurrent=1保留id=413（buyprice=4510.593）
+
+**注意**: `getCangweisByTableName()` 查询条件是 `fene > 0`，iscurrent=1但fene=0的记录不会被程序查到，不影响交易逻辑。
+
+---
+
+### 5. ATR周期过短导致失真
+
+**发现**: ATR_PERIOD=14（5分钟K线）只覆盖75分钟。大波动日（XAU日内波幅3.1%）后进入横盘，ATR迅速跌到0.08%，无法反映全天真实波动。
+
+**测算**:
+| ATR | 覆盖时间 | 问题 |
+|-----|---------|------|
+| 14×5分钟 | 75分钟 | 太短，遗忘大波动 |
+| 30×5分钟 | 150分钟 | 建议值，能捕捉半天波动 |
+
+**结论**: 未修改ATR_PERIOD（保持14），但接受其局限性。配合0.10%暂停门槛使用。
+
+---
+
+### 6. T交易胜率是核心瓶颈
+
+**数据**: DOGE 22笔T交易，8胜14负，胜率 **36%**。
+
+**数学**:
+| 盈亏比 | 最低胜率要求 | DOGE实际 |
+|--------|------------|---------|
+| 1.2 : 1 | 45.5% | 36% ❌ |
+| 1.5 : 1 | 40.0% | 36% ❌ |
+| 1.67 : 1 | 37.5% | 36% ❌ |
+
+**结论**: 胜率低是市场环境（震荡市）导致，不是参数问题。当前保底机制：
+- 日亏损上限 -5U
+- 连续2次亏损冷却30分钟
+- 低ATR自动暂停
+
+---
+
+### 7. 程序自动建仓XAU 4张
+
+**时间**: 2026-05-29 02:54
+**成交**: 3张 + 1张 @ $4505.4
+**当时指标**: RSI≈46, ATR=0.076%, MACD shrinking
+**结果**: 买入后markPrice跌至$4504，微亏
+
+**注意**: 用户OKX原有103张XAU，程序自动加仓4张后总持仓111张。数据库iscurrent=1但fene=0，程序靠价格突破触发建仓。
+
+---
+*最后更新: 2026-05-29*
+
+
+---
+
+## 底仓网格档位系统详解（重要）
+
+### 负数 Level 的本质
+
+数据库中 `id` 和 `level` 为**负数**的记录（如 `-248`, `-247` ... `-200`）**不是 T 仓位**，而是程序预先创建的**底仓网格档位模板**。
+
+```
+初始化时程序批量创建：
+- id=-250, level=-250, buyprice_real=0.1000755
+- id=-249, level=-249, buyprice_real=0.0999802
+- id=-248, level=-248, buyprice_real=0.0999000
+- ...（按固定间距递减）
+- id=-200, level=-200, buyprice_real=0.0998400
+```
+
+### 与 T 仓位的核心区别
+
+| 特征 | 底仓网格档位 | T 仓位 |
+|------|------------|--------|
+| **Level 范围** | 负数（如 `-250` ~ `-200`） | `900` ~ `999` |
+| **ID 范围** | 负数（与 level 相同） | 负数（`-100000` ~ `0`） |
+| **管理方式** | 数据库 `iscurrent` 指针 + `fene` | Redis (`t:pos:*`) |
+| **买入触发** | 价格触达档位 `buyprice` | `canOpen()` + 评分通过 |
+| **买入量** | `fund.getMoney() * huiche`（DOGE 约 30 → 0.03张） | `canTrade.zhang`（DOGE 约 0.02张） |
+| **日志位置** | `buy.txt`: `DOGE_buyprice_long_... -243->-242` | `catalina.out`: `[T-Open] ... 张数=0.02` |
+| **是否移动 iscurrent** | ✅ 是（`level-1` 或 `level+1`） | ❌ 否 |
+
+### iscurrent 指针移动机制
+
+```java
+// 买入方向（tag=1,4,7）：指针向下移动（level+1，价格更低档位）
+int level = fundItem.getLevel().intValue() + 1;
+
+// 卖出方向（tag=2,3,8）：指针向上移动（level-1，价格更高档位）
+int level = fundItem.getLevel().intValue() - 1;
+```
+
+**日志格式解读**：
+```
+DOGE-USDT-SWAP_buyprice_long_202605290404=0.09936  -243->-242
+                                         ↑价格      ↑旧iscurrent  ↑新iscurrent
+```
+
+### 为什么 0.03 张不是 T 仓位
+
+- **T 仓位买入量**：由 `DailyProfitTManager.canOpen()` 计算，DOGE 固定 `0.02` 张
+- **底仓网格买入量**：由 `fund.getMoney() * fund.getHuiche()` 计算，DOGE 固定 `30` 份 → OKX 下单 `0.03` 张
+- **T 仓位 level**：代码硬编码 `9999999`，数据库记录中显示为 `9999998`（因 `level = getLevel() - 1`）
+- **底仓档位 level**：负数，如 `-248`, `-247`
+
+---
+
+## DOGE 失控建仓事件（2026.05.29）
+
+### 事件经过
+
+**03:40** - 用户重启 Tomcat（PID 4143201），恢复交易循环
+**03:46** - 用户将 DOGE `iscurrent=1` 设到 `id=1`（buyprice=`0.07615269`，历史低价）
+**03:53 ~ 03:54** - **失控开始**：程序发现当前价 `~0.0998` 远高于 `id=1` 的 buyprice，疯狂向上移动 iscurrent 指针
+- 约 **40 次买入**在 1 分钟内完成，每次 `0.03` 张
+- 日志刷屏：`-208->-207`, `-209->-208`, ... `-248->-247`
+**04:04 ~ 04:29** - 继续零星买入，最终 `-248`（buyprice=`0.0999`）获得 `iscurrent=1`
+
+### 数据库最终状态
+
+| level | fene | buyprice_real | iscurrent | 说明 |
+|-------|------|---------------|:---------:|------|
+| -248 | 30 | 0.0999 | **1** | 当前活跃档位 |
+| -247 | 30 | 0.0998 | 0 | 已买入 |
+| -246 | 30 | 0.09971 | 0 | 已买入 |
+| -245 | 30 | 0.09962 | 0 | 已买入 |
+| -244 | 30 | 0.09955 | 0 | 已买入 |
+| -243 | 30 | 0.09947 | 0 | 已买入 |
+| -242 | 30 | 0.09936 | 0 | 已买入 |
+| -241 | 30 | 0.09926 | 0 | 已买入 |
+
+`cangweis.size = 8`（fene > 0 的记录数）
+
+### OKX 持仓变化
+
+| 时间 | pos | avgPx | 说明 |
+|------|-----|-------|------|
+| 04:39 前 | 0.26 | 0.099596 | 底仓 |
+| 04:39 | 0.29 | 0.099627 | +0.03 张底仓网格买入 |
+| 04:39 后 | 0.31 | 0.099648 | +0.02 张 T 仓位买入 |
+
+### 根因分析
+
+1. **iscurrent 指向历史低价档位**：`id=1` 的 buyprice=`0.076` 是数月前的价格，与当前价 `0.0998` 偏离 **31%**
+2. **档位跳跃无冷却**：程序每个 tick 都检查 `price >= maxP`，触发后立即移动到下一个档位并买入，**没有任何跨 tick 冷却**
+3. **与 T 交易冷却无关**：T 交易有 30-60 秒冷却，但底仓网格档位买入**完全没有冷却机制**
+
+### 应急处理
+
+- 用户手动清零所有 `fene > 0` 的记录，阻止程序继续识别为"有底仓"
+- 但 `iscurrent=1` 保留在 `-248`（接近当前价），程序继续正常运行
+- 当前 DOGE OKX 持仓 `0.31` 张，avgPx=`0.09965`，微利状态
+
+---
+
+## 缺失的风控：底仓网格档位买入冷却
+
+### 当前状态
+
+| 交易类型 | 冷却机制 | 状态 |
+|---------|---------|------|
+| T 交易开仓 | `lastTradeTime` + 30~60秒 | ✅ 有 |
+| T 交易失败重试 | `t:processing:{symbol}` 30秒 | ✅ 有 |
+| 底仓建仓（正数level） | `build:lasttime:{symbol}` 30秒 | ✅ 有 |
+| **底仓网格档位买入（负数level）** | **无** | ❌ **缺失** |
+
+### 风险场景
+
+当 `iscurrent` 指针需要连续跨越多个档位时：
+1. Tick 1: 触发 `-243` 买入 → 移动 iscurrent 到 `-242`
+2. Tick 2: 触发 `-242` 买入 → 移动 iscurrent 到 `-241`
+3. Tick 3: 触发 `-241` 买入 → ...
+
+**1 分钟内可完成数十次买入**，累积大量仓位。
+
+### 建议修复方案
+
+在 `FundPriceUpdate2` 底仓网格买入逻辑中（负数 level 分支）添加冷却：
+
+```java
+// 【新增】底仓网格档位买入冷却
+String gridCooldownKey = "grid:cooldown:" + fund.getCode();
+if (jedisClient.exists(gridCooldownKey)) {
+    System.out.println("【网格档位冷却中】" + fund.getCode() + " 30秒内禁止连续档位买入");
+    continue;
+}
+
+// ... 执行买入 ...
+
+// 设置冷却
+jedisClient.setex(gridCooldownKey, 30, "1");
+```
+
+或者更保守的方案：**限制每分钟最大档位移动次数**（如最多 1 次/30秒）。
+
+---
+
+## 重要概念澄清汇总
+
+### 1. 三种"买入"的本质区别
+
+| 买入类型 | 买入量(DOGE) | Level | 日志关键字 | 管理方 |
+|---------|-------------|-------|----------|--------|
+| **底仓网格档位买入** | 0.03 张 | 负数（-248等） | `buyprice_long` / `(level-1)->level` | `FundServiceImpl` + DB |
+| **底仓正数level建仓** | 0.03 张 | 1-100 | `【建仓确认】` / `alarmtag=1` | `FundPriceUpdate2` + DB |
+| **T仓位开仓** | 0.02 张 | 9999998/900-999 | `[T-Open]` / `【T开仓】` | `DailyProfitTManager` + Redis |
+
+### 2. 两种"Level=9999998"的区分
+
+| 属性 | `star` 档位 | T 仓位 |
+|------|------------|--------|
+| **name** | `dogealarmstarstopsarab`（含 `star`） | `DOGE_bs`（含 `_bs`） |
+| **实际下单** | ❌ 不下单，只移指针 | ✅ 下单 |
+| **日志中 level** | 不显示 | `9999998`（因代码 `level = getLevel() - 1`） |
+| **数据库记录** | `id=1`（正数） | 负 id（如 `-12345`） |
+
+### 3. 仓位查询命令速查
+
+```bash
+# 查底仓网格档位（负数level）
+mysql -u root -p'b5bc53de6c89f79b' test -e \
+  "SELECT id, fene, buyprice_real, iscurrent, level FROM fund_doge_swap WHERE level < 0 AND level > -300 ORDER BY level"
+
+# 查T仓位（正数level>800或数据库记录）
+mysql -u root -p'b5bc53de6c89f79b' test -e \
+  "SELECT id, fene, buyprice_real, level FROM fund_doge_swap WHERE level > 800 OR id < 0 ORDER BY id"
+
+# 查OKX持仓
+python3 /home/www/code/fundalarmcode/.agents/skills/okxagent/scripts/okx_api.py positions --inst-id DOGE-USDT-SWAP --live
+
+# 查买入日志
+tail /home/www/tomcat/apache-tomcat-9.0.102/webapps/ROOT/WEB-INF/classes/buy.txt
+
+# 查T交易日志
+grep "T-Open\|T-Dynamic\|T平仓" /home/www/tomcat/apache-tomcat-9.0.102/logs/catalina.out | tail -20
+```
+
+---
+
+## Telegram 媒体采集与转发系统重构（2026-06-07）
+
+### 架构升级：从轮询到实时事件驱动
+
+**背景**: 原系统 `getfuture.py` 每小时/每5分钟轮询 `GetHistoryRequest` 采集，`forward_db_no_header.py` 每10分钟轮询转发。延迟高、频繁登录易触发风控。
+
+**新架构**:
+```
+源频道(91个) ──→ monitor_waiwang.py (Telethon events.NewMessage 常驻监听)
+                      ↓
+        ┌─────────────┼─────────────┐
+        ↓             ↓             ↓
+    MySQL入库    实时标题补全    wanwu5555实时转发
+   waiwang_video  (grouped_id)    → wwshareforworld
+        ↓
+   每天凌晨3点 SQL清理兜底
+```
+
+### 核心变更
+
+| 组件 | 变更前 | 变更后 |
+|------|--------|--------|
+| **数据采集** | `getfuture.py` 轮询 `GetHistoryRequest` | `monitor_waiwang.py` 实时 `events.NewMessage` |
+| **入库延迟** | 5~60分钟 | **秒级** |
+| **转发延迟** | `forward_db_no_header.py` 每10分钟 | **秒级**（集成到监听脚本） |
+| **album处理** | 逐条入库、逐条转发 | 逐条入库、**合并成album批量转发** |
+| **标题补全** | 每天 SQL 清理兜底 | **实时**按`grouped_id`补全 |
+| **Telegram登录** | 每5分钟登录+断连 | **一次登录长期保持** |
+
+### 新增/修改文件
+
+```
+Telegram_Restricted_Media_Downloader-main/
+├── monitor_waiwang.py              # 【新增】常驻实时监听脚本
+│   ├── 启动时解析 116 个频道，过滤无效后保留 ~91 个有效频道
+│   ├── 监听新消息事件，视频秒级入库
+│   ├── 按 grouped_id 实时补全同组空标题
+│   ├── wanwu5555 频道实时转发到 wwshareforworld
+│   │   ├── 单条：立即无转发头发送
+│   │   └── album：缓冲3秒，收齐后合并成 album 批量发送
+│   └── 每小时兜底检查一次（GetHistoryRequest 补齐遗漏）
+│
+├── run_main_getfuture.sh           # 【精简】去掉 getfuture.py 调用
+│   └── 只保留 SQL 清理（更新URL、补标题、删短视频/图片）
+│
+├── forward_db_no_header.py         # 【停用】轮询转发已移除 crontab
+│   └── 脚本保留，必要时可手动补发
+│
+├── run_main_getfuture.sh.bak.20260607_233221   # 【备份】
+└── getfuture.py.bak.20260607_233221            # 【备份】
+```
+
+### Crontab 调整
+
+```cron
+# 旧（已移除）
+*/5 * * * * /home/www/telegramsender/run_main_getfuture.sh
+*/10 * * * * flock ... forward_db_no_header.py
+
+# 新
+0 3 * * * /home/www/telegramsender/run_main_getfuture.sh     # 仅SQL清理兜底
+```
+
+### 运行状态
+
+```bash
+# 常驻监听进程
+screen -ls | grep waiwang
+# 830448.waiwang_monitor  (Detached)
+
+# 查看日志
+tail -f /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/monitor_waiwang.log
+
+# 预期日志
+[新作品] wanwu5555 vid=23820 dur=1800s | #标题...
+[实时转发] wanwu5555/23820 -> wwshareforworld/2845
+[实时转发album] wanwu5555 album/14246728967546593 (3条 3个媒体) -> wwshareforworld
+[标题补全] grouped_id=14246728967546593 补了 2 条
+```
+
+### 风控优势
+
+| 风险点 | 轮询（旧） | 实时监听（新） |
+|--------|-----------|---------------|
+| 登录频率 | 每5分钟登录+断连，一天288次 | **一次登录长期保持** |
+| API请求模式 | 批量 `GetHistoryRequest` 拉取 | 被动接收服务器推送 |
+| 行为特征 | 像爬虫（规律周期、批量拉取） | 像正常客户端（长连接） |
+| FloodWait风险 | 频繁请求易触发 | 请求量极小，被动接收 |
+
+### 技术细节
+
+**album 缓冲机制**:
+```python
+# monitor_waiwang.py
+album_buffer = {}   # {grouped_id: [msg1, msg2, ...]}
+album_timers = {}   # {grouped_id: asyncio.Task}
+
+# 收到 album 第1条 → 加入buffer + 启动3秒定时器
+# 收到 album 第N条 → 加入buffer + 重置定时器
+# 3秒内无新消息 → 定时器触发 → 合并发送 album
+```
+
+**SQLite 去重**:
+- 复用 `forward_records.db`（原 `forward_db_no_header.py` 使用）
+- 主键 `(channel, vid, target)` 防止重复转发
+
+**Session 说明**:
+- `mybot_collect_cron`：监听采集 + 实时转发共用
+- `mybot_collect`：保留给 `forward_db_no_header.py` 手动补发使用
+
+---
+
+*最后更新: 2026-06-08 00:30*
+
+
+---
+
+## Telegram Bot 架构与多 Bot 路由（V2026.06.08）
+
+### 1. 架构概述
+
+系统同时运行 **3 个 Telegram Bot**，通过 Spring Bean 多实例管理：
+
+| Bot | Username | sourceBot | 负责的群 | Token 前缀 |
+|-----|----------|-----------|---------|-----------|
+| 主 Bot | `@summer0011999bot` | `0` | 386 VIP群 (`-1003867299066`) | `8485884288` |
+| 搜索 Bot | `@smserachbot` | `3` | 399 会员群 (`-1003992613609`) | `8858593921` |
+| 记事本 Bot | `@nvzhuSM_bot` (GroupNotepadBot) | `1` | — | `8766973549` |
+
+**核心文件**:
+- `TelegramChannelMonitor.java` — Bot 实例基类，重写 `execute()` 实现多 bot 路由
+- `RobotServiceImpl.java` — 消息处理核心（搜索 `dealSearch` / 提取 `dealGetWork`）
+- `AsyncEventPublisher.java` — 异步生成记事本并推送到 Redis
+- `forward_sender_bot.py` — Python 队列消费端（私聊 fallback）
+
+### 2. CHAT_TO_MONITOR 路由表
+
+```java
+static Map<Long, TelegramChannelMonitor> CHAT_TO_MONITOR = new ConcurrentHashMap<>();
+
+// 初始化时每个 bot 写入自己负责的群
+for (Long gid : this.targetGroupIds) {
+    CHAT_TO_MONITOR.put(gid, this);
+}
+```
+
+**作用**: `execute(Method method)` 发送消息时，根据 `chatId` 查找对应的 bot 实例，确保用正确的 token 发送。不在路由表中的群走 fallback 逻辑。
+
+### 3. ThreadLocal CURRENT_BOT
+
+```java
+private static final ThreadLocal<TelegramChannelMonitor> CURRENT_BOT = new ThreadLocal<>();
+
+// 必须在 CompletableFuture.runAsync lambda 内设置！
+CompletableFuture.runAsync(() -> {
+    RobotServiceImpl.setCurrentBot(this);  // ThreadLocal 不跨线程
+    robotService.dealSearch(update);
+    RobotServiceImpl.clearCurrentBot();
+}, taskExecutor);
+```
+
+**关键**: `ThreadLocal` 不会自动传播到 `CompletableFuture.runAsync` 的线程池线程中，必须在 lambda 内部显式设置。
+
+### 4. 自定义轮询（替代 DefaultBotSession）
+
+由于 Tomcat 热部署时旧实例线程存活，导致 Jackson `NoClassDefFoundError` 和 `[409] Conflict`，重写 `startMonitoring()`：
+
+```java
+public synchronized void startMonitoring() {
+    new Thread(() -> {
+        Gson gson = new GsonBuilder()
+            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)  // 关键！
+            .create();
+        while (running) {
+            URL url = new URL(getBaseUrl() + "getUpdates?offset=" + (lastUpdateId + 1));
+            // HttpURLConnection + Gson 手动解析
+        }
+    }).start();
+}
+```
+
+**Gson 蛇形命名**: Telegram API 返回 `update_id`，Java POJO 是 `updateId`。不加 `LOWER_CASE_WITH_UNDERSCORES` 会导致 `updateId` 始终为 `null`，消息被无限重复处理。
+
+---
+
+## 紧急修复与经验总结（V2026.06.08）
+
+### 1. 399 群搜索话题无响应修复
+
+**问题**: 用户在 399 群搜索话题发送 `12309` 无反应。
+
+**根因链**:
+1. 399 群 `messageThreadId=null` — 消息实际发在 General 主频道（论坛群主话题的 `message_thread_id` 为 `null`）
+2. `TelegramChannelMonitor.onUpdateReceived()` 中强制 `topicok=1`，但 `dealGetWork()` 内部重新判断 `messageThreadId`，又把它变回 `0`
+3. `dealGetWork()` 中 `groupok==1 && topicok==0` 时直接 `return`，不发任何回复
+
+**修复** (`RobotServiceImpl.java`):
+```java
+if (messageThreadId == null) {
+    System.out.println("这是普通消息（非话题）");
+    // 399群主频道(General)也允许响应
+    if (chatId.equals(-1003992613609L)) {
+        System.out.println("【399群】主频道消息也响应");
+        topicok = 1;
+    }
+}
+```
+
+### 2. fallback "chat not found" 大小写 Bug
+
+**问题**: `sm视频大全` 群搜索"赵丽颖"，图片能发、文字汇总失败，`❌ 回复失败: chat not found`。
+
+**根因**:
+- `@smserachbot` 不在 `sm视频大全` 群里，`fallback.superExecute()` 抛异常 `"chat not found"`（**小写 c**）
+- `execute()` 里 catch 判断只匹配 `"Chat not found"`（**大写 C**）→ 匹配失败 → 异常直接 `throw` → 没执行到最后的 `super.execute(method)`（即 `@summer0011999bot` 自己发）
+
+**修复** (`TelegramChannelMonitor.java`):
+```java
+if (msg.contains("bot was kicked") || msg.contains("Chat not found") 
+    || msg.contains("chat not found")  // ← 新增小写匹配
+    || msg.contains("bot can't initiate conversation")) {
+    continue;
+}
+```
+
+### 3. SendPhoto 绕过路由的根本原因
+
+**问题**: 为什么 `SendPhoto` 能成功、而 `SendMessage` 会触发 fallback 失败？
+
+**根因**: `DefaultAbsSender` 里有**非泛型重载** `execute(SendPhoto)`，而 `TelegramChannelMonitor.execute(Method method)` 的参数约束是 `Method extends BotApiMethod<T>`。`SendPhoto` **不实现 `BotApiMethod`**（它只继承 `PartialBotApiMethod`），所以 `this.execute(sendPhoto)` 匹配不到重写的方法，直接进了父类的 `execute(SendPhoto)` — 完全绕过了 fallback 路由，用当前 bot 的 token 就发出去了。
+
+```
+SendPhoto extends PartialBotApiMethod<Message>
+PartialBotApiMethod implements Validable（不实现 BotApiMethod）
+
+this.execute(sendPhoto)  →  匹配 DefaultAbsSender.execute(SendPhoto)  →  直接发
+this.execute(sendMessage) →  匹配 TelegramChannelMonitor.execute(Method) → 走路由
+```
+
+**修复**: 对于不在 `CHAT_TO_MONITOR` 中的群，`sendChannelReplyWithPhoto` 和 `sendChannelReply` 直接调用 `super.execute(reply)` 绕过整个 fallback 路由：
+
+```java
+if (CHAT_TO_MONITOR.get(chatId) == null) {
+    super.execute(reply);  // 直接用当前 bot 发，不走 fallback
+} else {
+    execute(reply);        // 走正常路由
+}
+```
+
+### 4. Jackson/Gson 冲突与自定义轮询
+
+**问题**: Tomcat 热部署后旧线程 `NoClassDefFoundError`，`DefaultBotSession` 崩溃，新实例报 `[409] Conflict`。
+
+**根因**: `DefaultBotSession` 内部使用 Jackson 反序列化 `getUpdates` 响应。Tomcat 旧类加载器停止后，旧线程访问 Jackson 类触发 `NoClassDefFoundError`。
+
+**修复**:
+- `jackson-annotations/core/databind` 升级到 `2.17.2`
+- 重写 `startMonitoring()`，用 `HttpURLConnection` + `Gson` 手动轮询，完全绕过 `DefaultBotSession`
+- Gson 必须设置 `FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES`
+
+### 5. 私聊 @smserachbot 被另一个 bot 回复
+
+**问题**: 私聊 `@smserachbot` 无反应，或收到 `@summer0011999bot` 的回复。
+
+**根因**:
+1. `TelegramChannelMonitor.execute()` 中私聊 `chatId > 0` 时直接 `super.execute(method)`，但之前 fallback 逻辑会在失败后尝试其他 bot
+2. `getSender()` 硬编码返回 `telegramChannelMonitor`（主 bot），而不是 `CURRENT_BOT.get()`
+
+**修复**:
+- `execute()`: 私聊 `chatId > 0` 时直接 `super.execute(method)`，不 fallback
+- `RobotServiceImpl.getSender()`: 优先从 `CURRENT_BOT` ThreadLocal 取当前 bot
+- `resolveSourceBot()`: 优先从 `CURRENT_BOT` 判断 sourceBot
+
+### 6. 事务回调改为直接调用
+
+**问题**: `dealSearch` 中 `TransactionSynchronizationAdapter.afterCommit` 不触发，记事本不生成。
+
+**根因**: `@Transactional` + 内部 `this.` 调用导致 Spring CGLIB 代理无法拦截，`afterCommit` 在事务回滚时不会触发（实际上事务静默回滚了）。
+
+**修复**: 移除 `TransactionSynchronizationAdapter`，改为 `dealSearch` 末尾直接调用 `publisher.publishEventAsync(info, update, sourceBot)`。
+
+### 7. 记事本 sourceBot 硬编码
+
+**问题**: 记事本始终用 `@summer0011999bot` 发送，即使搜索来自 399 群（应该用 `@smserachbot`）。
+
+**修复**:
+- `AsyncEventPublisher.publishEventAsync(String info, Update update, String sourceBot)` 增加 `sourceBot` 参数
+- `forward_sender_bot.py` 的 `TOKEN_MAP` 按 `source_bot` 路由:
+  ```python
+  TOKEN_MAP = {
+      '0': '8485884288:...',  # summer0011999bot
+      '1': '8766973549:...',  # notepadbot
+      '3': '8858593921:...',  # smserachbot
+  }
+  ```
+
+---
+
+### 2026-06-08
+
+#### Telegram Bot 自定义轮询回退 DefaultBotSession
+
+**问题**: `summer0011999bot`（386群）和 `smserachbot`（399群）完全无响应。日志每秒刷屏：
+```
+[summer0011999bot] 轮询异常: Unable to invoke no-args constructor for interface ChatMember
+[smserachbot] 轮询异常: Unable to invoke no-args constructor for interface ChatMember
+```
+
+**根因**: 2026-06-08 引入的自定义轮询（`HttpURLConnection` + `Gson` 手动解析 `getUpdates`）存在致命缺陷。Telegram API 返回的 JSON 中包含 `my_chat_member`/`chat_member` 等更新类型，其内部字段类型为 `ChatMember` 接口。Gson 无法实例化接口，导致整个轮询循环异常，所有消息被跳过，Bot 完全瘫痪。
+
+**修复** (`TelegramChannelMonitor.java`):
+```java
+// startMonitoring() 恢复使用 TelegramBotsApi + DefaultBotSession
+public synchronized void startMonitoring() {
+    if (REGISTERED_BOTS.contains(botUsername)) return;
+    try {
+        TelegramBotsApi botsApi = new TelegramBotsApi(DefaultBotSession.class);
+        botsApi.registerBot(this);
+        REGISTERED_BOTS.add(botUsername);
+        System.out.println("[" + botUsername + "] DefaultBotSession 启动成功");
+    } catch (TelegramApiException e) {
+        // fallback：仅在 DefaultBotSession 启动失败时回退到自定义轮询
+        System.err.println("[" + botUsername + "] DefaultBotSession 启动失败，fallback: " + e.getMessage());
+        startCustomPolling();
+        REGISTERED_BOTS.add(botUsername);
+    }
+}
+```
+
+**验证**:
+```
+[summer0011999bot] DefaultBotSession 启动成功
+[smserachbot] DefaultBotSession 启动成功
+```
+- `GroupNotepadBot` 一直使用 `DefaultBotSession`，从未出问题，证明该方案在当前环境稳定
+- 线程名从 `summer0011999bot Custom Polling` 变为 `TelegramBot-N`，确认切换生效
+- `ChatMember` 轮询异常彻底消失
+
+**教训**:
+- 自定义轮询用 Gson 解析复杂 Telegram API 对象图风险极高（接口、多态、未知字段）
+- `DefaultBotSession` 内部使用 Jackson + 库自带的反序列化器，能正确处理所有 Telegram 类型
+- 之前切换自定义轮询是为解决"热部署 Jackson NoClassDefFoundError"，但当前为冷启动（kill-9 后重新 startup），该问题根本不存在
+- 未来如需热部署，应考虑升级 Jackson 版本或清理旧线程，而非用 Gson 重写轮询
+
+---
+
+#### Tomcat 停止原因调查
+
+**时间线**:
+```
+16:07:35.971  [Thread-5] Closing Spring root WebApplicationContext  ← Tomcat 停止
+16:07:46     [DubboShutdownHook] Dubbo 服务卸载                      ← JVM 关闭后续
+16:12:09     手动启动 Tomcat（PID 1309437）                          ← 首次恢复
+16:21:17     替换 class 后再次重启 Tomcat（PID 1314915）              ← 修复后
+```
+
+**证据**:
+- `last` 显示 `ubuntu` 用户在 `16:07` 登录了 `pts/16`，且 `still logged in`
+- `localhost.2026-06-08.log` 记录 `[Thread-5] Closing Spring root WebApplicationContext`
+- 无 OOM Killer 记录（`dmesg` 无相关日志）
+- 无系统崩溃或自动重启脚本（`crontab` 无相关任务）
+- `bash_history` 无直接 shutdown 命令（可能在其他会话或 root shell 中执行）
+
+**结论**: 最可能是 **人为操作**（用户在 16:07 登录后，通过 kill 或 shutdown.sh 停止了 Tomcat）。`Thread-5` 关闭 Spring Context 的模式不符合标准 Catalina shutdown 线程名，可能是 Dubbo ShutdownHook 或某个后台线程触发的关闭链式反应。
+
+---
+
+---
+
+### 2026-06-11
+
+#### 1. 私聊搜索余额为零拦截修复
+
+**问题**: 所有 Bot 私聊消息走 `dealGetWork()`，余额为 0 时在方法前段直接 `return`，连纯文本搜索（应走 `default → dealSearch()`，不扣费）也被拦截。
+
+**修复** (`RobotServiceImpl.java`):
+- **删除** `dealGetWork` 第 842-854 行余额为 0 的早期 `return` 拦截
+- **扣费点加保护**: `wallet.setBalance(wallet.getBalance() - 1)` 改为先判断 `balance > 0` 才扣，余额为 0 时追加"余额不足"提示
+
+```java
+// 扣费前查余额
+if (topicok == 0 || topicok == 2) {
+    if (wallet.getBalance() != null && wallet.getBalance() > 0) {
+        wallet.setBalance(wallet.getBalance() - 1);
+        ...
+    } else {
+        replyText += "\n⚠️ 余额不足，请联系客服QQ2167485304充值";
+    }
+}
+```
+
+#### 2. 记事本发送流程重构
+
+**问题**: 搜索后记事本经过 `Java → Redis "videos" → donwloadFileAndSendToUser.py → forward_sender_bot.py` 多级中转，延迟高。
+
+**修复**:
+- **Telegram 记事本**: `AsyncEventPublisher.publishEventAsync()` 不再推 Redis，改为直接写入 SQLite `/tmp/ai_bridge.db` `pending_uploads` 表，`forward_sender_bot.py` 直接读取发送
+- **QQ Bot 记事本**: `publishQQBotSearchAsync()` 不再推 Redis，改为直接调 `QQBotClient.sendFileToUser()` 发给用户
+- **新增依赖**: `pom.xml` 加 `org.xerial:sqlite-jdbc:3.45.1.0`
+
+```java
+// AsyncEventPublisher.pushToSenderBotQueue()
+INSERT INTO pending_uploads (chat_id, file_path, caption, source_bot, message_thread_id, status)
+VALUES (?, ?, ?, ?, ?, 'pending')
+```
+
+#### 3. 记事本结果混合排序
+
+**问题**: 三种记事本（QQ Bot / notepadbot / Telegram senderbot）都按类别分块展示，不便于浏览。
+
+**修复**:
+- **QQ Bot** (`AsyncEventPublisher`): 新增 `NotepadEntry` 内部类统一承载，`addVideoEntries`/`addChannelEntries` 收集后按 `time` 倒序，`writeMixedSectionTxt` 统一输出
+- **notepadbot** (`GroupNotepadBot`): `results.sort()` 按 `time` 倒序，统一输出为 `【搜索结果】`
+- **Telegram senderbot** (`RobotServiceImpl`): `sortNotepadByTime()` 解析 `\t时间:` 字段，按时间排序后重建内容
+
+#### 4. 记事本补全时间、时长、作者
+
+**问题**: QQ Bot 和 notepadbot 记事本只显示标题和指令，缺少关键信息。
+
+**修复**:
+- `AsyncEventPublisher.getVideoTime()` 新增，返回各类型时间字段
+- `AsyncEventPublisher.writeVideoSectionTxt()` 补全 作者、时长、时间 三行
+- `GroupNotepadBot.SearchResult` 新增 `time` 字段
+- `GroupNotepadBot.writeTypeSectionTxt()` 补全时长、时间
+
+**数据修复**: `ZmqVideo` 缺少 `dt` 字段映射 → 加 `dt` 到 pojo + MyBatis mapper XML
+
+#### 5. 外网（TG）时长秒数转 HH:MM:SS
+
+**问题**: `WaiwangVideo.duration` 是秒数（如 `2097`），与其他类型格式不一致。
+
+**修复**: 三个文件各加 `secondsToHMS()` 方法，`2097` → `34:57`
+
+#### 6. senderbot 保活 cron
+
+**问题**: `forward_sender_bot.py` 曾停止运行，导致 SQLite 队列积压 445 条。
+
+**修复**: crontab 加 `*/5 * * * * pgrep -f forward_sender_bot.py || python3 /home/www/baidu/forward_sender_bot.py`
+
+---
+
+---
+
+### 2026-06-12
+
+#### 1. 记事本标题换行符 + 序号重排
+
+**问题**: Telegram senderbot 记事本标题含 `\r\n` 嵌入，导致 `sortNotepadByTime()` 解析时一行变多行；排序后序号仍是原始值。
+
+**修复**:
+- `RobotServiceImpl.getAllWork()` 6 处标题赋值加 `.replace("\r", "").replace("\n", "")`
+- `sortNotepadByTime()` 排序后重新编号：替换行首序号为 `1..N`
+- notepadbot / QQ 记事本同步加标题清洗
+
+#### 2. 频道搜索时间显示当天 Bug
+
+**问题**: `RobotServiceImpl.getAllWork()` 和 `dealSearchInternal()` 中 isearch 频道搜索 `dt = sdf.format(new Date())` 始终显示当天，实际 `rq` 字段有真实日期但未使用。
+
+**修复**: `new Date()` → `new Date(rq)`（两处）
+
+#### 3. zmq_video.dt 字段映射
+
+**问题**: `ZmqVideo.getDt()` 不存在，之前用 `getAddtime()` 但 DB 该字段为空，而 `zmq_video.dt` 有真实数据。
+
+**修复**:
+- `ZmqVideo.java` 新增 `private String dt` + getter/setter
+- `ZmqVideoMapper.xml` 新增 `dt` 列映射 + `Base_Column_List`
+- `AsyncEventPublisher.getVideoTime()` / `GroupNotepadBot` 改用 `getDt()`
+
+#### 4. donw 上传配置切换
+
+**背景**: `client3` (kaikai 备用) 上传带宽太低（平均 6.6 Mbps），切换回主 `client`。
+
+**修复**: `config.yaml` 中 `vip_sender_client: client3` → `client`。donw 重启后稳定 **30 Mbps**（差异：70% → 92% 带宽利用率）。
+
+#### 5. 玩物视频采集 → wanwu_video
+
+采集主播 20629881（纹身主甜甜s）视频到 wanwu_video（patrol 同款格式）:
+- 标题格式: `标题_作品id--VID_用户id--UID_昵称-NICK`
+- api_client.py sessionToken 从手机读取: `97FD4043A0A53924`（userId 86454230）
+- 21 条入库（6 条有 playUrl，15 条无 URL 已删除）
+
+#### 6. eQiBao 投保人历史表排重
+
+`xmall_policy.tb_customer_toubaoren_history`:
+- 排重: 1056 → 286（删 770 条，基于 customer_id/tbr_name/tb_card）
+- tb_cardtype 统一为 '1'
+- 全字段排重: 1259 → 1055
+- Excel 导入: +243 条（11 批 bulk INSERT IGNORE）
+- 唯一索引: 7 字段前缀（customer_id+tbr_name+tb_cardtype+tb_card+phone+address+email）
+
+#### 7. 股票分析脚本修复
+
+`/home/www/stock/run_stock.sh`:
+- `StockHistoryFast 10` → `60` 天（修复 Excel 涨跌幅前 25 天全为 0%）
+- K线红绿规则: close>=open→红(#FE5449)，close<open→绿(#90EE90)
+- 涨跌幅: pctChg>=0→红，pctChg<0→绿
+
+---
+
+*最后更新: 2026-06-12*
+
+---
+
+### 2026-06-20
+
+#### 1. Telegram 群话题监控与提取权限控制
+
+**文件**:
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/tg/TelegramChannelMonitor.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/telegram/TelegramBotConfig.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`
+
+**问题**:
+1. `TelegramChannelMonitor` 中 399 群被强制 `topicok=1`，导致 yueyue bot 在该群所有话题都响应。
+2. 386 群 `TelegramBotConfig` 配置的话题 ID 为 `(1, 4)`，与实际 206/2564 话题不匹配，导致 206 话题无法搜索/提取。
+3. 非会员群（如 wwsearchcenter2）用户发提取命令时走 `dealGetWork` 扣费提取。
+4. 群里普通搜索文本也被 `RobotServiceImpl.dealGetWork` 检测余额，余额不足时提示充值。
+
+**修复**:
+
+**1) `TelegramChannelMonitor.java`**
+- 删除 399 群强制响应逻辑。
+- 无话题限制群的普通消息（`messageThreadId == null`）视为目标话题，允许响应。
+- 已配置话题列表的群，仅当 `messageThreadId` 匹配配置话题时才响应；未配置该话题则不响应。
+
+```java
+if (messageThreadId == null) {
+    System.out.println("这是普通消息（非话题）");
+    List<Integer> topics = this.groupTopics.get(chatId);
+    if (topics == null || topics.isEmpty()) {
+        System.out.println("【无话题限制群】普通消息视为目标话题");
+        topicok = 1;
+    } else if (chatId.equals(-1003992613609L)) {
+        System.out.println("【399群】普通消息视为目标话题");
+        topicok = 1;
+    }
+} else {
+    System.out.println("话题IDs: " + messageThreadId);
+    List<Integer> topics = this.groupTopics.get(chatId);
+    if (topics != null && !topics.isEmpty()) {
+        if (messageThreadId.equals(topics.get(0))) {
+            System.out.println("✅ 来自目标群体的目标话题，必须响应。");
+            topicok = 1;
+        } else if (topics.size() > 1 && messageThreadId.equals(topics.get(1))) {
+            System.out.println("✅ 来自目标群体的 小飞机网盘 话题，必须响应。");
+            topicok = 2;
+        } else {
+            System.out.println("来自目标群体的其他话题,不响应。");
+        }
+    } else {
+        System.out.println("来自目标群体未配置该话题，不响应。");
+    }
+}
+```
+
+**2) `TelegramBotConfig.java`**
+- 386 群话题配置改为与实际一致：
+  ```java
+  topics.put(-1003867299066L, Arrays.asList(206, 2564));
+  ```
+- 399 群不再配置特定话题，仅通过普通消息响应：
+  ```java
+  // topics.put(-1003992613609L, Arrays.asList(...));
+  ```
+
+**3) `RobotServiceImpl.java`**
+- `dealGetWork()` 开头增加群权限判断：只有 386/399 会员群才允许提取，其他群一律转 `dealSearch()`：
+  ```java
+  // 会员群（386、399）可以在特定话题提取，其他群只能搜索
+  if (isGroup && !chatId.equals(-1003867299066L) && !chatId.equals(-1003992613609L)) {
+      System.out.println("【非会员群】chatId=" + chatId + " 只走搜索，不提取");
+      dealSearch(update);
+      return;
+  }
+  ```
+- 群里搜索不检测余额：由于非会员群已转 `dealSearch`，会员群和私聊继续走原余额检测逻辑。
+
+**当前群权限规则**:
+
+| 群 | 普通消息 | 提取命令 | 搜索 |
+|---|---|---|---|
+| 386 会员群 | ❌ 不响应 | ✅ 话题 206/2564 可提取 | ✅ 话题 206/2564 可搜索 |
+| 399 会员群 | ✅ 可搜索/提取 | ✅ 可提取 | ✅ 可搜索 |
+| wwsearchcenter2 等其他群 | ✅ 只搜索 | ✅ 只搜索（不扣费） | ✅ 可搜索 |
+| 私聊 | ✅ 搜索+提取 | ✅ 搜索+提取，扣费 | ✅ 可搜索 |
+
+**部署**:
+- 编译：`mvn clean package -DskipTests`
+- 替换 Tomcat `ROOT.war`
+- 重启 Tomcat
+- GitHub 提交：`625d29e`
+
+---
+
+*最后更新: 2026-06-20*
