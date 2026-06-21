@@ -1,0 +1,189 @@
+{
+    "bots": [
+        {
+            "appId": "1903745193",
+            "clientSecret": "MnBZuBHKKORVVegc",
+            "name": "机器人1"
+        },
+        {
+            "appId": "1903756971",
+            "clientSecret": "HLPTXbfkpuz49EKQWciou18FMTaiqy6E",
+            "name": "机器人2"
+        },
+        {
+            "appId": "1903768319",
+            "clientSecret": "5kP5lS9raJ3nYJ5sfTI7xofXQJD83zwt",
+            "name": "机器人3"
+        },
+        {
+            "appId": "1903777125",
+            "clientSecret": "wLkAa1SuNqKoJoKqNudM6rcOBymaPF5w",
+            "name": "机器人4"
+        },
+        {
+            "appId": "1903781933",
+            "clientSecret": "gHgsujKhqlTxDKFw",
+            "name": "机器人5"
+        },
+        {
+            "appId": "1903828854",
+            "clientSecret": "tHg5VwNpHkDhBgBhElJrQzZ9kLxaDrVA",
+            "name": "机器人6"
+        },
+        {
+            "appId": "1903828836",
+            "clientSecret": "a4Y2W0UzUzUzUzV1X3Z5b7eBiFmJqOwU",
+            "name": "机器人7"
+        },
+        {
+            "appId": "1903778154",
+            "clientSecret": "6SoBZxMlBc3VxQuOtOuQxV3cBlMxZBoS",
+            "name": "机器人8"
+        },
+        {
+            "appId": "1903830381",
+            "clientSecret": "hWMC3umfYSMHC8520yxwwxy0258CHMSY",
+            "name": "机器人9"
+        },
+        {
+            "appId": "1903830571",
+            "clientSecret": "a7RZUBfx2tXx98tQ",
+            "name": "机器人10"
+        },
+        {
+            "appId": "1903837008",
+            "clientSecret": "mFiCgBhDkHpNwV5fGsU7kO2hM2iP6oXG",
+            "name": "机器人11"
+        },
+        {
+            "appId": "1903849229",
+            "clientSecret": "Sm7TqDbzOoFg8b4Y2X3Z6dBjIrR1cEqT",
+            "name": "机器人12"
+        },
+        {
+            "appId": "1903849797",
+            "clientSecret": "CObo2HWm2JbtCVpAVrDayMlBb2UwPtNs",
+            "name": "机器人13"
+        },
+        {
+            "appId": "1903871246",
+            "clientSecret": "AiGoMuS1a9iHqQ0aAkKuV6hItU6iKwYA",
+            "name": "机器人14"
+        },
+        {
+            "appId": "1903900136",
+            "clientSecret": "Nk8WvKkAb3VySwRwSzW4cBlLwYA1tmgb",
+            "name": "机器人15"
+        },
+        {
+            "appId": "1903918975",
+            "clientSecret": "N1gM2jQ8raK5qcOBzncRH8zrkdXRMIEB",
+            "name": "机器人16"
+        },
+        {
+            "appId": "1903918989",
+            "clientSecret": "nDe6Y1UySxSyU1Z7gFpP0bDpS6kP4kQ7",
+            "name": "机器人17"
+        },
+        {
+            "appId": "1903922462",
+            "clientSecret": "cN8uhUI6vkaQH80tmgaVQMIFCA98889A",
+            "name": "机器人18"
+        },
+        {
+            "appId": "1903922103",
+            "clientSecret": "uRzX6gGrS4gJwaEtZFwdL3mVFzkWI5sg",
+            "name": "机器人19"
+        },
+        {
+            "appId": "1903919041",
+            "clientSecret": "hChDjGnLuT3dEpR3gKydIyeL2kSBuePA",
+            "name": "机器人20"
+        },
+        {
+            "appId": "1903970085",
+            "clientSecret": "cGuZEuaHzhQ9tdOAwjWK8xndULD5ysmh",
+            "name": "机器人21"
+        },
+        {
+            "appId": "1903974632",
+            "clientSecret": "byMk9YyOpHjCf9d8d9fCjHpOxX7iJvXA",
+            "name": "机器人22"
+        },
+        {
+            "appId": "1903983558",
+            "clientSecret": "aflry5DLUdnx8KWjwAOds8OfwEWp8Sm7",
+            "name": "机器人23"
+        },
+        {
+            "appId": "1904003772",
+            "clientSecret": "44rRqGalsurfIsT3",
+            "name": "机器人24"
+        },
+        {
+            "appId": "1904036064",
+            "clientSecret": "b6MOB4lFUUGn58xh",
+            "name": "机器人25"
+        },
+        {
+            "appId": "1904044034",
+            "clientSecret": "bRI91tmfZTOJFC97543334579CFJNSXd",
+            "name": "机器人26"
+        },
+        {
+            "appId": "1904048000",
+            "clientSecret": "2iP6oWFzjUF1naNBzodTJA1tleXRLGC8",
+            "name": "机器人27"
+        },
+        {
+            "appId": "1904050561",
+            "clientSecret": "JC5ztojfcZXVUTTTUWYbeimrw28FMUdm",
+            "name": "机器人28"
+        },
+        {
+            "appId": "1904050908",
+            "clientSecret": "ukOq44sTq0xf8NN8",
+            "name": "机器人29"
+        },
+        {
+            "appId": "1904055337",
+            "clientSecret": "JFB85310zz01358BFJOTZgnv3CLVfq1D",
+            "name": "机器人30"
+        },
+        {
+            "appId": "1904055039",
+            "clientSecret": "hFoOyZAmO1eIwbHxeL3lUDxhSDzmZNB0",
+            "name": "机器人31"
+        },
+        {
+            "appId": "1904065234",
+            "clientSecret": "PUZfls08HQakv6IViwAPeuARi0IbvFav",
+            "name": "机器人32"
+        },
+        {
+            "appId": "1904066622",
+            "clientSecret": "2tkcUNHB61xtqnljiiijkmoruy27DJQX",
+            "name": "机器人33"
+        },
+        {
+            "appId": "1904071559",
+            "clientSecret": "VjxCRhxEVn6Pj3Oj5RoBZyNnDe5XzSvP",
+            "name": "机器人34"
+        },
+        {
+            "appId": "1904074247",
+            "clientSecret": "9D4i8KI2YqujKgnl",
+            "name": "机器人35"
+        },
+        {
+            "appId": "1904077521",
+            "clientSecret": "BHOVdmv5FQbn0DRfu9PgxFXq9To9VrEb",
+            "name": "机器人36"
+        },
+        {
+            "appId": "1904107192",
+            "clientSecret": "7A5oJbgbOyLYdT5U",
+            "name": "机器人37"
+        }
+    ]
+}

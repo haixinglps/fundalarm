@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "tencent-docs": {
+      "name": "腾讯文档 TENCENT DOCS",
+      "zip_url": "https://lightmake.site/api/v1/download?slug=tencent-docs",
+      "source": "skillhub",
+      "version": "1.0.33"
+    }
+  }
+}

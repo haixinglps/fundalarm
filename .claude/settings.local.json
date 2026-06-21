@@ -20,7 +20,21 @@
       "Bash(python /tmp/fix_braces.py)",
       "Bash(ls -la target/*.war)",
       "Bash(find /home/www/code/fundalarmcode -name \"*.java\" -exec grep -l \"class JedisClient\\\\|public class JedisClient\" {} \\\\;)",
-      "Bash(xargs strings:*)"
+      "Bash(xargs strings:*)",
+      "Bash(ls:*)",
+      "Read(//tmp/**)",
+      "Bash(python3)",
+      "Bash(pip3 install:*)",
+      "Bash(./deploy.sh)",
+      "Read(//home/www/tomcat/apache-tomcat-9.0.102/bin/**)",
+      "Bash(./shutdown.sh)",
+      "Bash(./startup.sh)",
+      "Bash(pkill -f \"catalina\")",
+      "Bash(rm -rf /home/www/tomcat/apache-tomcat-9.0.102/webapps/ROOT*)",
+      "Bash(nohup /home/www/tomcat/apache-tomcat-9.0.102/bin/catalina.sh run)",
+      "Bash(ll:*)",
+      "Bash(pkill -9 -f \"catalina\")",
+      "Bash(pkill -9 -f \"catalina\" sleep 3 ps aux)"
     ]
   }
 }

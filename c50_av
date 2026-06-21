@@ -1,0 +1,5 @@
+INSERT IGNORE INTO tb_customer_toubaoren_history (customer_id,tbr_name,tb_cardtype,tb_card,tbr_phone,tbr_address,tbr_email) VALUES (213,'上海腾越达物流科技有限公司','1','91310112MAEAW1AE7X','15780582707','','');
+INSERT IGNORE INTO tb_customer_toubaoren_history (customer_id,tbr_name,tb_cardtype,tb_card,tbr_phone,tbr_address,tbr_email) VALUES (311,'沈阳黑曼巴物流服务有限公司','0','91210181MA0P54C55F','15076562180','','');
+INSERT IGNORE INTO tb_customer_toubaoren_history (customer_id,tbr_name,tb_cardtype,tb_card,tbr_phone,tbr_address,tbr_email) VALUES (213,'上海腾越达物流科技有限公司','1','91310112MAEAW1AE7X','13591319335','','');
+INSERT IGNORE INTO tb_customer_toubaoren_history (customer_id,tbr_name,tb_cardtype,tb_card,tbr_phone,tbr_address,tbr_email) VALUES (283,'吉林省源力合众餐饮配送服务有限公司','0','91220103MA14WJ5X0J','15055512289','','');
+INSERT IGNORE INTO tb_customer_toubaoren_history (customer_id,tbr_name,tb_cardtype,tb_card,tbr_phone,tbr_address,tbr_email) VALUES (296,'仙桃市誉之勉物流网络有限公司','1','91429004MAKDHC0F3D','18701295527','','');

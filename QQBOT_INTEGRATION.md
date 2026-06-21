@@ -502,6 +502,61 @@ def send_secure_file_to_qq(user_id, file_path, title="", safe_name=None, app_id=
     return success
 ```
 
+## VIP 用户管理
+
+### 表结构
+
+QQ/Telegram 用户共用 `test.tb_wallet`：
+
+| 字段 | 说明 |
+|------|------|
+| `uid` | 用户唯一标识（Telegram 数字 ID、QQ 号或哈希字符串） |
+| `nickname` | 用户昵称，`QQBot` 用户的 nickname 格式为 `{qq号}_QQBot_xxx` |
+| `balance` | 余额/积分 |
+| `vip` | VIP 等级，`1` 表示 VIP |
+| `vid_end_time` | VIP 到期时间 |
+
+### 查询 QQBot 已过期用户
+
+```sql
+SELECT uid, nickname, balance, vip, vid_end_time,
+       TIMESTAMPDIFF(DAY, vid_end_time, NOW()) AS expired_days
+FROM test.tb_wallet
+WHERE vip = 1
+  AND vid_end_time IS NOT NULL
+  AND vid_end_time < NOW()
+  AND nickname LIKE '%QQBot%'
+ORDER BY vid_end_time DESC;
+```
+
+### 查询 QQBot 7 天内到期用户
+
+```sql
+SELECT uid, nickname, balance, vip, vid_end_time,
+       TIMESTAMPDIFF(DAY, NOW(), vid_end_time) AS remain_days
+FROM test.tb_wallet
+WHERE vip = 1
+  AND vid_end_time IS NOT NULL
+  AND vid_end_time >= NOW()
+  AND vid_end_time <= DATE_ADD(NOW(), INTERVAL 7 DAY)
+  AND nickname LIKE '%QQBot%'
+ORDER BY vid_end_time ASC;
+```
+
+### 当前状态（2026-06-20 查询）
+
+- **已过期 QQBot 用户**：0 个
+- **7 天内到期 QQBot 用户**：4 个
+
+| nickname | 余额 | 到期时间 | 剩余天数 |
+|---|---|---|---|
+| 1904048000_QQBot_2iP6oWFzjUF1naNBzodTJA1tleXRLGC8 | 9999 | 2026-06-22 00:00:00 | 0 |
+| 1904050908_QQBot_ukOq44sTq0xf8NN8 | 9999 | 2026-06-23 00:00:00 | 1 |
+| 1904055039_QQBot_hFoOyZAmO1eIwbHxeL3lUDxhSDzmZNB0 | 9999 | 2026-06-24 00:00:00 | 2 |
+| 1904003772_QQBot_44rRqGalsurfIsT3 | 9999 | 2026-06-24 00:00:00 | 2 |
+
+> QQ 号就是 nickname 中下划线前面的数字部分。
+
 ## 常见问题
 
 ### 错误 code:11255 - "invalid request"

@@ -869,6 +869,7 @@ public class RobotServiceImpl implements RobotService {
 
 		Message receivedMessage = update.getMessage();
 		Long chatId = receivedMessage.getChatId();
+		String rechargeQQ = "3".equals(resolveSourceBot(chatId)) ? "3097758477" : "2167485304";
 
 		// https://t.me/c/3867299066/206 https://t.me/c/3867299066/206/417
 		// ========== 1. 判断是否为群组/频道 ==========
@@ -1014,7 +1015,7 @@ public class RobotServiceImpl implements RobotService {
 		boolean isVipGroup = chatId.equals(-1003867299066L) || chatId.equals(-1003992613609L);
 		if ((topicok == 0 || topicok == 2) && extractCommands.contains(pri) && !isVipGroup)
 			if (wallets.size() == 0 || wallets.get(0).getBalance() == null || wallets.get(0).getBalance() == 0) {
-				replyText += "请找客服qq2167485304充值\n";
+				replyText += "请找客服qq" + rechargeQQ + "充值\n";
 				replyMessage.setText(replyText);
 				try {
 					getSender().execute(replyMessage);
@@ -1676,7 +1677,7 @@ public class RobotServiceImpl implements RobotService {
 		if ((topicok == 0 || topicok == 2) && !isVipGroup) {
 			int deductRows = tbWalletMapper.deductBalance("" + uid);
 			if (deductRows == 0) {
-				replyText += "\n⚠️ 余额不足，请联系客服QQ2167485304充值";
+				replyText += "\n⚠️ 余额不足，请联系客服QQ" + rechargeQQ + "充值";
 				replyMessage.setText(replyText);
 				try {
 					getSender().execute(replyMessage);

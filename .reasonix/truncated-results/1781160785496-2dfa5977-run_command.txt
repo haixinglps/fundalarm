@@ -1,0 +1,832 @@
+$ git -C /home/www/code/fundalarmcode diff robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java
+[exit 0]
+diff --git a/robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java b/robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java
+index 542bfe0..1bfc3b3 100644
+--- a/robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java
++++ b/robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java
+@@ -6,12 +6,14 @@ import java.io.FileWriter;
+ import java.io.IOException;
+ import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+-import java.util.ArrayList;
++import java.util.Arrays;
+ import java.util.Calendar;
+ import java.util.Date;
+ import java.util.HashMap;
++import java.util.HashSet;
+ import java.util.List;
+ import java.util.Map;
++import java.util.Set;
+ import java.util.UUID;
+ 
+ import javax.annotation.Resource;
+@@ -129,6 +131,48 @@ public class RobotServiceImpl implements RobotService {
+ 	@Autowired
+ 	TelegramChannelMonitor telegramChannelMonitor;
+ 
++	// 线程本地变量：当前正在处理消息的 bot 实例（实现"谁收到谁回复"）
++	private static final ThreadLocal<TelegramChannelMonitor> CURRENT_BOT = new ThreadLocal<>();
++
++	public static void setCurrentBot(TelegramChannelMonitor monitor) {
++		CURRENT_BOT.set(monitor);
++	}
++
++	public static void clearCurrentBot() {
++		CURRENT_BOT.remove();
++	}
++
++	private TelegramChannelMonitor getSender() {
++		TelegramChannelMonitor current = CURRENT_BOT.get();
++		String botName = current != null ? current.getBotUsername() : telegramChannelMonitor.getBotUsername();
++		System.out.println("[getSender] currentBot=" + botName + ", thread=" + Thread.currentThread().getName());
++		return current != null ? current : telegramChannelMonitor;
++	}
++
++	/**
++	 * 根据当前收到消息的 bot 实例解析 sourceBot
++	 * 优先从 ThreadLocal 取，取不到再回退到 chatId 判断
++	 */
++	private String resolveSourceBot(Long chatId) {
++		TelegramChannelMonitor current = CURRENT_BOT.get();
++		if (current != null) {
++			String botUsername = current.getBotUsername();
++			System.out.println("[resolveSourceBot] currentBot=" + botUsername + ", chatId=" + chatId);
++			if ("summer0011999bot".equals(botUsername)) {
++				return "0";
++			} else if ("smserachbot".equals(botUsername)) {
++				return "3";
++			}
++		}
++		System.out.println("[resolveSourceBot] currentBot=null, chatId=" + chatId + ", fallback to chatId");
++		// fallback：按 chatId 判断（QQ Bot 等无 CURRENT_BOT 场景）
++		if (chatId != null) {
++			if (chatId.equals(-1003867299066L)) return "0";
++			if (chatId.equals(-1003992613609L)) return "3";
++		}
++		return "0";
++	}
++
+ 	@Lazy
+ 	@Resource
+ 	AsyncEventPublisher publisher;
+@@ -146,6 +190,7 @@ public class RobotServiceImpl implements RobotService {
+ 	public void dealSearch(Update update) {
+ 		try {
+ 		dealSearchInternal(update);
++		System.out.println("[DEBUG] dealSearch 正常完成");
+ 		} catch (Exception e) {
+ 			e.printStackTrace();
+ 			System.err.println("【dealSearch 异常】" + e.getMessage());
+@@ -174,6 +219,7 @@ public class RobotServiceImpl implements RobotService {
+ 			channelMsg = update.getMessage();
+ 		System.out.println(channelMsg.getChat().getUserName());
+ 		Long chatId = channelMsg.getChatId(); // 频道ID
++		String sourceBot = resolveSourceBot(chatId); // 根据当前收到消息的 bot 实例判断来源
+ 
+ 		String text = channelMsg.getText(); // 消息文本
+ 
+@@ -218,7 +264,7 @@ public class RobotServiceImpl implements RobotService {
+ 		mediaList = new ArrayList<InputMedia>();
+ 
+ 		for (int i = 0; i < listWaiwangzmq.size(); i++) {
+-			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
++			String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
+ 					"zm" + listWaiwangzmq.get(i).getVid());
+ 			String tt = listWaiwangzmq.get(i).getTitle();
+ //			if (tt.length() > 60)
+@@ -238,7 +284,7 @@ public class RobotServiceImpl implements RobotService {
+ //				re.append(photo.getCaption() + "\n");
+ //			} else {
+ 
+-			int robotRe = telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
++			int robotRe = getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
+ 					channelMsg.getMessageId(), listWaiwangzmq.get(i).getCover());
+ //			try {
+ ////				Thread.sleep(5000);
+@@ -282,7 +328,7 @@ public class RobotServiceImpl implements RobotService {
+ 		mediaList = new ArrayList<InputMedia>();
+ 
+ 		for (int i = 0; i < listWaiwang2.size(); i++) {
+-			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
++			String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
+ 					"bc" + listWaiwang2.get(i).getId());
+ 			String tt = listWaiwang2.get(i).getTitle().split("_")[0];
+ //			if (tt.length() > 60)
+@@ -303,7 +349,7 @@ public class RobotServiceImpl implements RobotService {
+ //				re.append(photo.getCaption() + "\n");
+ //			} else {
+ 
+-			int robotRe = telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
++			int robotRe = getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
+ 					channelMsg.getMessageId(), listWaiwang2.get(i).getCover());
+ //			try {
+ ////				Thread.sleep(5000);
+@@ -341,7 +387,7 @@ public class RobotServiceImpl implements RobotService {
+ 		mediaList = new ArrayList<InputMedia>();
+ 
+ 		for (int i = 0; i < list.size(); i++) {
+-			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
++			String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
+ 					"ww" + list.get(i).getVid());
+ 
+ 			// 检查封面是否为空
+@@ -375,7 +421,7 @@ public class RobotServiceImpl implements RobotService {
+ //			} else {
+ //			System.out.println("--------------------index:" + i + " " + list.get(i).getCover());
+ 
+-			int robotResult = telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
++			int robotResult = getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
+ 					channelMsg.getMessageId(), list.get(i).getCover());
+ 
+ 			if (robotResult == 0)
+@@ -385,9 +431,9 @@ public class RobotServiceImpl implements RobotService {
+ 		}
+ //		if (mediaList.size() > 0) {
+ //			if (mediaList.size() >= 2)
+-//				telegramChannelMonitor.sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
++//				getSender().sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
+ //			else {
+-//				telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(0).getCaption(),
++//				getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(0).getCaption(),
+ //						channelMsg.getMessageId(), list.get(0).getCover());
+ //
+ //			}
+@@ -422,7 +468,7 @@ public class RobotServiceImpl implements RobotService {
+ 		mediaList = new ArrayList<InputMedia>();
+ 
+ 		for (int i = 0; i < listTaolu.size(); i++) {
+-			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
++			String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
+ 					"tl" + listTaolu.get(i).getVid());
+ 			// 检查封面是否为空
+ 			String cover = listTaolu.get(i).getCover();
+@@ -442,7 +488,7 @@ public class RobotServiceImpl implements RobotService {
+ //						+ listTaolu.get(i).getVid() + "\t" + link + "\n");
+ //			} else {
+ 
+-			int robotRe = telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
++			int robotRe = getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(i).getCaption(),
+ 					channelMsg.getMessageId(), listTaolu.get(i).getCover());
+ 
+ 			if (robotRe == 0)
+@@ -451,9 +497,9 @@ public class RobotServiceImpl implements RobotService {
+ 		}
+ //		if (mediaList.size() > 0) {
+ //			if (mediaList.size() >= 2)
+-//				telegramChannelMonitor.sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
++//				getSender().sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
+ //			else {
+-//				telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(0).getCaption(),
++//				getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(0).getCaption(),
+ //						channelMsg.getMessageId(), listTaolu.get(0).getCover());
+ //			}
+ //
+@@ -491,7 +537,7 @@ public class RobotServiceImpl implements RobotService {
+ 		StringBuffer ttt = new StringBuffer();
+ 
+ 		for (int i = 0; i < listWaiwang.size(); i++) {
+-			String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
++			String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
+ 					"tg" + listWaiwang.get(i).getId());
+ 			String tt = listWaiwang.get(i).getTitle().replace("#", "");
+ 			if (tt.length() > 60)
+@@ -508,7 +554,7 @@ public class RobotServiceImpl implements RobotService {
+ 					+ listWaiwang.get(i).getDt() + "\t" + "机器人口令：tg" + listWaiwang.get(i).getId() + "\t" + link); // 每张图片独立描述
+ 			mediaList.add(photo);
+ 
+-//			int robotRe = telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, photo.getCaption(),
++//			int robotRe = getSender().sendChannelReplyWithPhoto(chatId, photo.getCaption(),
+ //					channelMsg.getMessageId(), "6127453610561357706");
+ //			if (robotRe == 0) {
+ ////				re.append(i + "\t" + tt + "\t" + listWaiwang.get(i).getDt() + "\t" + "机器人口令：tg" + listWaiwang.get(i).getId()
+@@ -519,8 +565,8 @@ public class RobotServiceImpl implements RobotService {
+ 		if (mediaList.size() > 0) {
+ 			// String vr = escapeMarkdown(ttt.toString());
+ 
+-//			telegramChannelMonitor.sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
+-			// telegramChannelMonitor.sendChannelReply(chatId, vr,
++//			getSender().sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
++			// getSender().sendChannelReply(chatId, vr,
+ 			// channelMsg.getMessageId());
+ 		}
+ 
+@@ -549,7 +595,7 @@ public class RobotServiceImpl implements RobotService {
+ 
+ 			for (int i = 0; i < hits.size(); i++) {
+ 				Hit hit = hits.get(i);
+-				String link = TelegramDeepLink.generateLink(telegramChannelMonitor.getBotUsername(),
++				String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
+ 						"ch" + hit.getId());
+ 				String tt = hit.getArticle().getString("TX").replace("#", "");
+ 				if (tt.length() > 60)
+@@ -565,7 +611,7 @@ public class RobotServiceImpl implements RobotService {
+ //						+ dt + "\t" + "机器人口令：ch" + hit.getId() + "\t" + link); // 每张图片独立描述
+ //				mediaList.add(photo);
+ 
+-//			int robotRe = telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, photo.getCaption(),
++//			int robotRe = getSender().sendChannelReplyWithPhoto(chatId, photo.getCaption(),
+ //					channelMsg.getMessageId(), "6127453610561357706");
+ //			if (robotRe == 0) {
+ ////				re.append(i + "\t" + tt + "\t" + listWaiwang.get(i).getDt() + "\t" + "机器人口令：tg" + listWaiwang.get(i).getId()
+@@ -585,9 +631,9 @@ public class RobotServiceImpl implements RobotService {
+ 
+ //		if (mediaList.size() > 0) {
+ //			if (mediaList.size() >= 2)
+-//				telegramChannelMonitor.sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
++//				getSender().sendPhotos(chatId, channelMsg.getMessageId(), mediaList);
+ //			else {
+-//				telegramChannelMonitor.sendChannelReplyWithPhoto(chatId, mediaList.get(0).getCaption(),
++//				getSender().sendChannelReplyWithPhoto(chatId, mediaList.get(0).getCaption(),
+ //						channelMsg.getMessageId(), listWaiwang2.get(0).getCover());
+ //			}
+ //
+@@ -601,16 +647,16 @@ public class RobotServiceImpl implements RobotService {
+ 			validRes = "❌ 未找到相关作品: " + text;
+ 		}
+ 
+-//		telegramChannelMonitor.sendChannelReply(chatId, validRes, channelMsg.getMessageId());
++//		getSender().sendChannelReply(chatId, validRes, channelMsg.getMessageId());
+ 
+ 		int maxLength = 4096;
+ 		for (int i = 0; i < validRes.length(); i += maxLength) {
+ 			String chunk = validRes.substring(i, Math.min(i + maxLength, validRes.length()));
+ //			SendMessage message = new SendMessage(chatId.toString(), chunk);
+ 
+-			telegramChannelMonitor.sendChannelReply(chatId, chunk, channelMsg.getMessageId());
++			getSender().sendChannelReply(chatId, chunk, channelMsg.getMessageId());
+ 
+-//		 telegramChannelMonitor.sendChannelReply(chatId, validRes,
++//		 getSender().sendChannelReply(chatId, validRes,
+ //		 channelMsg.getMessageId());
+ 
+ 		}
+@@ -624,17 +670,8 @@ public class RobotServiceImpl implements RobotService {
+ 			info = "uid" + channelMsg.getFrom().getId() + "_" + text.replace("_", "").replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "").replace("/", "");
+ 		}
+ 		// 注册事务提交后的回调
+-		org.springframework.transaction.support.TransactionSynchronizationManager
+-				.registerSynchronization(new TransactionSynchronizationAdapter() {
+-					@Override
+-					public void afterCommit() {
+-						// 使用异步服务发送消息
+-						// 推送数据到redis队列里进行计算。
+-
+-						publisher.publishEventAsync(info, update);
+-//						jedisClient.lpush("videos", info);
+-					}
+-				});
++		System.out.println("[DEBUG] 直接调用 publishEventAsync 生成记事本，sourceBot=" + sourceBot);
++		publisher.publishEventAsync(info, update, sourceBot);
+ 
+ 		return;
+ 	}
+@@ -653,6 +690,7 @@ public class RobotServiceImpl implements RobotService {
+ 
+ 		Message receivedMessage = update.getMessage();
+ 		Long chatId = receivedMessage.getChatId();
++		String sourceBot = resolveSourceBot(chatId); // 根据当前收到消息的 bot 实例判断来源
+ 
+ 		// https://t.me/c/3867299066/206 https://t.me/c/3867299066/206/417
+ 		// ========== 1. 判断是否为群组/频道 ==========
+@@ -680,12 +718,11 @@ public class RobotServiceImpl implements RobotService {
+ 		int vip = 0;
+ 
+ 		// ========== 2. 判断是否为指定群组 ==========
+-		Long targetGroupId = -1003867299066L; // 替换为你的群组ID（带 -100 前缀）
++		Set<Long> targetGroupIds = new HashSet<>(Arrays.asList(-1003867299066L, -1003992613609L));
+ 		int groupok = 0;
+ 		int topicok = 0;
+-		if (!chatId.equals(targetGroupId)) {
+-			System.out.println("不是目标群组，当前群组ID: " + chatId);
+-
++		if (!targetGroupIds.contains(chatId)) {
++			System.out.println("不是目标群组，当前群组ID: " + chatId + ", sourceBot=" + sourceBot);
+ 		} else {
+ 			groupok = 1;
+ 		}
+@@ -695,37 +732,46 @@ public class RobotServiceImpl implements RobotService {
+ 		messageThreadId = receivedMessage.getMessageThreadId();
+ 
+ 		if (groupok == 1) {
+-
+ 			if (messageThreadId == null) {
+ 				System.out.println("这是普通消息（非话题）");
+-			} else {
+-				System.out.println("话题IDs: " + messageThreadId);
+-
+-				// 判断是否为指定话题
+-				Integer targetTopicId = 206; // 替换为目标话题ID
+-				Integer xfjht = 2564; // 替换为目标话题ID
+-				System.out.println("messageThreadId=" + messageThreadId + ", xfjht=" + xfjht);
+-				System.out.println("equals结果: " + (messageThreadId.intValue() == xfjht.intValue()));
+-
+-				if (messageThreadId.equals(targetTopicId)) {
+-					System.out.println("✅ 来自目标群组的目标话题，必须响应。");
++				// 399群主频道(General)也允许响应，message_thread_id为null是正常情况
++				if (chatId.equals(-1003992613609L)) {
++					System.out.println("【399群】主频道消息也响应");
+ 					topicok = 1;
+-				} else if (messageThreadId.intValue() == xfjht.intValue()) {
+-					System.out.println("✅ 来自目标群组的 小飞机网盘 话题，必须响应。");
+-					topicok = 2;
+ 				}
++			} else {
++				System.out.println("话题IDs: " + messageThreadId);
+ 
+-				else {
+-
+-					System.out.println("来自目标群组的其他话题,不响应。");
+-					// return;
++				// 按群区分话题
++				if (chatId.equals(-1003867299066L)) {
++					Integer targetTopicId = 206;
++					Integer xfjht = 2564;
++					if (messageThreadId.equals(targetTopicId)) {
++						System.out.println("✅ 来自386群的目标话题，必须响应。");
++						topicok = 1;
++					} else if (messageThreadId.intValue() == xfjht.intValue()) {
++						System.out.println("✅ 来自386群的小飞机网盘话题，必须响应。");
++						topicok = 2;
++					} else {
++						System.out.println("来自386群的其他话题,不响应。");
++					}
++				} else if (chatId.equals(-1003992613609L)) {
++					Integer targetTopicId = 1;
++					Integer xfjht = 4;
++					if (messageThreadId.equals(targetTopicId)) {
++						System.out.println("✅ 来自399群的目标话题，必须响应。");
++						topicok = 1;
++					} else if (messageThreadId.intValue() == xfjht.intValue()) {
++						System.out.println("✅ 来自399群的小飞机网盘话题，必须响应。");
++						topicok = 2;
++					} else {
++						System.out.println("来自399群的其他话题,不响应。");
++					}
+ 				}
+ 			}
+-
+ 		}
+ 		if (groupok == 1 && topicok == 0) {
+ 			System.out.println("私有群其他话题不处理");
+-
+ 			return;
+ 		}
+ 		// 正常扣费，如果topicok==1 代表vip，不扣费
+@@ -774,6 +820,13 @@ public class RobotServiceImpl implements RobotService {
+ 		if (wallets.size() > 0) {
+ 			replyText += "余额【这是提取作品前余额，提取后此数字会减1，如果提取失败不会减1的】：" + wallets.get(0).getBalance() + "\n";
+ 			System.out.println("余额：" + wallets.get(0).getBalance());
++			// 每次交互都更新最新用户名
++			TbWallet existWallet = wallets.get(0);
++			if (existWallet.getNickname() == null || !identifier.equals(existWallet.getNickname())) {
++				existWallet.setNickname(identifier);
++				tbWalletMapper.updateByPrimaryKeySelective(existWallet);
++				System.out.println("[Nickname] 更新用户昵称: " + identifier);
++			}
+ 		} else {
+ 
+ 			TbWallet wallet = new TbWallet();
+@@ -786,19 +839,6 @@ public class RobotServiceImpl implements RobotService {
+ 			wallets.add(wallet);
+ 
+ 		}
+-		if (topicok == 0 || topicok == 2)
+-			if (wallets.size() == 0 || wallets.get(0).getBalance() == null || wallets.get(0).getBalance() == 0) {
+-				replyText += "请找客服qq2167485304充值\n";
+-				replyMessage.setText(replyText);
+-				try {
+-					telegramChannelMonitor.execute(replyMessage);
+-				} catch (TelegramApiException e) {
+-					// TODO Auto-generated catch block
+-					log.error("服务器异常");
+-					e.printStackTrace();
+-				}
+-				return;
+-			}
+ 		TbWallet wallet = wallets.get(0);
+ 
+ 		String url = "";
+@@ -810,6 +850,7 @@ public class RobotServiceImpl implements RobotService {
+ 		String avatarUrl = "";
+ 		int zhindex = 0;
+ 		int yc = 0;
++		int videoDbId = 0;
+ 
+ 		String table = "wanwu_video";
+ //		if (receivedText.length() < 3) {
+@@ -817,7 +858,7 @@ public class RobotServiceImpl implements RobotService {
+ //			replyMessage.setText(replyText);
+ //
+ //			try {
+-//				telegramChannelMonitor.execute(replyMessage);
++//				getSender().execute(replyMessage);
+ //			} catch (TelegramApiException e) {
+ //				// TODO Auto-generated catch block
+ //				log.error("服务器异常");
+@@ -825,6 +866,18 @@ public class RobotServiceImpl implements RobotService {
+ //			}
+ //			return;
+ //		}
++		// /help /start 快捷回复
++		if ("/help".equals(receivedText) || "/start".equals(receivedText)) {
++			replyText = "使用方法，发送指令 等待作品到来";
++			replyMessage.setText(replyText);
++			try {
++				getSender().execute(replyMessage);
++			} catch (TelegramApiException e1) {
++				e1.printStackTrace();
++				log.error("服务器异常");
++			}
++			return;
++		}
+ 		String pri = receivedText.substring(0, 2);
+ 		int vid = 0;
+ 		switch (pri) {
+@@ -840,7 +893,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -882,7 +935,7 @@ public class RobotServiceImpl implements RobotService {
+ //						replyMessage.setText(replyText);
+ 
+ //						try {
+-//							telegramChannelMonitor.execute(replyMessage);
++//							getSender().execute(replyMessage);
+ //						} catch (TelegramApiException e1) {
+ //							// TODO Auto-generated catch block
+ //							e1.printStackTrace();
+@@ -903,7 +956,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -925,7 +978,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -947,7 +1000,7 @@ public class RobotServiceImpl implements RobotService {
+ 						replyMessage.setText(replyText);
+ 
+ 						try {
+-							telegramChannelMonitor.execute(replyMessage);
++							getSender().execute(replyMessage);
+ 						} catch (TelegramApiException e1) {
+ 							// TODO Auto-generated catch block
+ 							e1.printStackTrace();
+@@ -963,21 +1016,6 @@ public class RobotServiceImpl implements RobotService {
+ 				coverString = listZmq.get(0).getCover();
+ 				System.out.println("[DEBUG-ZM] vid=" + vid + ", url=" + url + ", byString=" + byString + ", wpString=" + listZmq.get(0).getUptag3());
+ 
+-				if (byString.contentEquals("sk")) {
+-
+-					if (receivedMessage.getFrom().getUserName() == null) {
+-						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+-						replyMessage.setText(replyText);
+-						try {
+-							telegramChannelMonitor.execute(replyMessage);
+-						} catch (TelegramApiException e1) {
+-							e1.printStackTrace();
+-							log.error("服务器异常");
+-						}
+-						return;
+-					}
+-				}
+-
+ 				wpString = listZmq.get(0).getUptag3() + "";
+ 				// 如果url中含有过期标记，则执行一个再次采集操作 54545采集。
+ 				ZmqVideo record = new ZmqVideo();
+@@ -990,7 +1028,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1012,7 +1050,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1032,40 +1070,59 @@ public class RobotServiceImpl implements RobotService {
+ 				Taolu3Video record = new Taolu3Video();
+ 				record.setGoodtag(1);
+ 
+-				if (byString.contentEquals("sk")) {
++				// 更新数据库：
++				taolu3VideoMapper.updateByExampleSelective(record, exampletl);
+ 
+-					if (receivedMessage.getFrom().getUserName() == null) {
+-						// TODO: handle exception
+-						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
++			} else {
++				// 数据库无记录，尝试通过 API 获取直播间信息
++				System.out.println("[ZB_API] 数据库无记录，尝试通过API获取: shortId=" + vid);
++				try {
++					Process process = Runtime.getRuntime().exec(
++						new String[]{"python3", "/home/www/code/ww/get_room_by_shortid.py", vid + ""}
++					);
++					process.waitFor();
++					java.io.BufferedReader reader = new java.io.BufferedReader(
++						new java.io.InputStreamReader(process.getInputStream())
++					);
++					StringBuilder output = new StringBuilder();
++					String line;
++					while ((line = reader.readLine()) != null) {
++						output.append(line);
++					}
++					JSONObject json = new JSONObject(output.toString());
++					if (json.getInt("code") == 0) {
++						url = json.getString("pull_url");
++						title = json.getString("title");
++						coverString = json.optString("cover", "");
++						author = json.optString("nickname", "");
++						avatarUrl = json.optString("photo", "");
++						System.out.println("[ZB_API] API获取成功: room=" + json.getInt("room_id") + ", title=" + title);
++					} else {
++						String err = json.optString("error", "未知错误");
++						System.out.println("[ZB_API] API获取失败: " + err);
++						replyText += "id可能有误：" + err + "\n";
+ 						replyMessage.setText(replyText);
+-
+ 						try {
+-							telegramChannelMonitor.execute(replyMessage);
++							getSender().execute(replyMessage);
+ 						} catch (TelegramApiException e1) {
+-							// TODO Auto-generated catch block
+ 							e1.printStackTrace();
+ 							log.error("服务器异常");
+ 						}
+ 						return;
+-
+ 					}
+-
+-				}
+-				// 更新数据库：
+-				taolu3VideoMapper.updateByExampleSelective(record, exampletl);
+-
+-			} else {
+-				replyText += "id可能有误\n";
+-				replyMessage.setText(replyText);
+-
+-				try {
+-					telegramChannelMonitor.execute(replyMessage);
+-				} catch (TelegramApiException e1) {
+-					// TODO Auto-generated catch block
+-					e1.printStackTrace();
+-					log.error("服务器异常");
++				} catch (Exception e) {
++					e.printStackTrace();
++					System.out.println("[ZB_API] 调用API异常: " + e.getMessage());
++					replyText += "id可能有误\n";
++					replyMessage.setText(replyText);
++					try {
++						getSender().execute(replyMessage);
++					} catch (TelegramApiException e1) {
++						e1.printStackTrace();
++						log.error("服务器异常");
++					}
++					return;
+ 				}
+-				return;
+ 			}
+ 			break;
+ 		case "ch":
+@@ -1080,7 +1137,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyText += "搜索服务故障";
+ 				replyMessage.setText(replyText);
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1097,7 +1154,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1116,7 +1173,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyText += "搜索服务故障";
+ 				replyMessage.setText(replyText);
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1147,22 +1204,6 @@ public class RobotServiceImpl implements RobotService {
+ 				if (byString == null || byString.contentEquals("sk") || byString.contentEquals("")
+ 						|| byString.contentEquals("null")) {
+ 
+-					if (receivedMessage.getFrom().getUserName() == null) {
+-						// TODO: handle exception
+-						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+-						replyMessage.setText(replyText);
+-
+-						try {
+-							telegramChannelMonitor.execute(replyMessage);
+-						} catch (TelegramApiException e1) {
+-							// TODO Auto-generated catch block
+-							e1.printStackTrace();
+-							log.error("服务器异常");
+-						}
+-						return;
+-
+-					}
+-
+ 				}
+ 				// 更新数据库：
+ 				// taolu3VideoMapper.updateByExampleSelective(record, exampletl);
+@@ -1172,7 +1213,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1193,7 +1234,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1212,7 +1253,7 @@ public class RobotServiceImpl implements RobotService {
+ 					replyText += "该作品暂不可提取\n";
+ 					replyMessage.setText(replyText);
+ 					try {
+-						telegramChannelMonitor.execute(replyMessage);
++						getSender().execute(replyMessage);
+ 					} catch (TelegramApiException e1) {
+ 						e1.printStackTrace();
+ 						log.error("服务器异常");
+@@ -1236,22 +1277,6 @@ public class RobotServiceImpl implements RobotService {
+ 				if (byString == null || byString.indexOf("feijipan.com") == -1) {
+ 					System.out.println("---------------------------------------------搜索成功2.3");
+ 
+-					if (receivedMessage.getFrom().getUserName() == null) {
+-						// TODO: handle exception
+-						replyText = "⚠️ 请到电报app左上角-设置，设置一个用户名，这个作品需要下载后发给你，全自动发送，无需找客服";
+-						replyMessage.setText(replyText);
+-
+-						try {
+-							telegramChannelMonitor.execute(replyMessage);
+-						} catch (TelegramApiException e1) {
+-							// TODO Auto-generated catch block
+-							e1.printStackTrace();
+-							log.error("服务器异常");
+-						}
+-						return;
+-
+-					}
+-
+ 				}
+ 				System.out.println("---------------------------------------------搜索成功3");
+ 
+@@ -1264,7 +1289,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1285,7 +1310,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1296,7 +1321,8 @@ public class RobotServiceImpl implements RobotService {
+ 			Waiwang2Video video2 = waiwang2VideoMapper.selectByPrimaryKey(vid);
+ 			if (video2 != null) {
+ 				url = video2.getUrl();
+-				title = video2.getTitle() + "_" + video2.getVid();
++				// 数据库 title 已在创建时拼接为 title_nickname_author 格式
++				title = video2.getTitle();
+ 				video2.setGoodtag(1);
+ 				byString = video2.getPantag();
+ 				wpString = video2.getChannel();
+@@ -1311,7 +1337,7 @@ public class RobotServiceImpl implements RobotService {
+ 				replyMessage.setText(replyText);
+ 
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+@@ -1321,48 +1347,15 @@ public class RobotServiceImpl implements RobotService {
+ 			}
+ 			break;
+ 		case "zb":
+-
+ 			vid = 0;
+ 			try {
+ 				vid = Integer.parseInt(receivedText.substring(2));
+ 			} catch (Exception e) {
+-				// TODO: handle exception
+-				replyText += "格式有误，正确格式是：zb33445 zb12423\n";
+-				replyMessage.setText(replyText);
+-
+-				try {
+-					telegramChannelMonitor.execute(replyMessage);
+-				} catch (TelegramApiException e1) {
+-					// TODO Auto-generated catch block
+-					e1.printStackTrace();
+-					log.error("服务器异常");
+-				}
+-				return;
+-			}
+-			Waiwang2VideoExample examplezb = new Waiwang2VideoExample();
+-			examplezb.createCriteria().andAuthorEqualTo(vid + "");
+-			examplezb.setOrderByClause("dt desc");
+-			PageHelper.startPage(1, 1);
+-			List<Waiwang2Video> videozbs = waiwang2VideoMapper.selectByExample(examplezb);
+-			if (videozbs != null && !videozbs.isEmpty()) {
+-				Waiwang2Video videozb = videozbs.get(0);
+-				url = videozb.getType();
+-				title = videozb.getTitle();
+-				coverString = videozb.getCover();
+-				author = videozb.getNickname();
+-				avatarUrl = videozb.getPhoto();
+-//				videozb.setGoodtag(1);
+-//				// 更新数据库：
+-//				waiwang2VideoMapper.updateByPrimaryKeySelective(video2);
+-
+-			} else {
+-				replyText += "id可能有误\n";
++					replyText += "zb是录制主播，正确格式是：zb33445 zb12423\n";
+ 				replyMessage.setText(replyText);
+-
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+-					// TODO Auto-generated catch block
+ 					e1.printStackTrace();
+ 					log.error("服务器异常");
+ 				}
+@@ -1374,7 +1367,7 @@ public class RobotServiceImpl implements RobotService {
+ //			replyMessage.setText(replyText);
+ //
+ //			try {
+-//				telegramChannelMonitor.execute(replyMessage);
++//				getSender().execute(replyMessage);
+ //			} catch (TelegramApiException e1) {
+ //				// TODO Auto-generated catch block
+ //				e1.printStackTrace();
+@@ -1388,10 +1381,10 @@ public class RobotServiceImpl implements RobotService {
+ 		// 每日提取次数限制：topicok=1（VIP群成员）每日限10次
+ 		if (topicok == 1) {
+ 			if (!checkDailyExtractLimit(identifier, topicok)) {
+-				replyText += "\n⚠️ 今日提取次数已达上限（1000000次），请明日再试。";
++				replyText += "\n⚠️ 今日提取次数已达上限（5次），请明日再试。";
+ 				replyMessage.setText(replyText);
+ 				try {
+-					telegramChannelMonitor.execute(replyMessage);
++					getSender().execute(replyMessage);
+ 				} catch (TelegramApiException e1) {
+ 					e1.printStackTrace();
+ 					log.error("服务器异常");
+@@ -1409,27 +1402,11 @@ public class RobotServiceImpl implements RobotService {
+ 				File file = new File(byString);
+ 				if (file.exists() || byString.indexOf("t.me") != -1) {
+ 
+-					if (receivedMessage.getFrom().getUserName() == null) {
+-						// TODO: handle exception
+-						replyText
+
+[… truncated 25961 chars …]
