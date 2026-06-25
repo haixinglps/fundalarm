@@ -3667,10 +3667,18 @@ grep "网盘判断(byString)" /home/www/tomcat/apache-tomcat-9.0.102/logs/catali
 
 **功能：**
 1. 定时轮询 `videoList` API 获取正在直播的房间列表（每次扫描 250 个）
-2. 调 `getRoomInfo` 获取 `pullUrl`（RTMP 流地址）和主播资料
+2. 调 `getRoomInfo` 获取 `pullUrl` 和主播资料（免费场返回 RTMP，收费场返回 HLS）
 3. 保存主播信息和观众信息到数据库（`waiwang2_video`、`wanwu_author_details`）
 4. 匹配 `goodauthor1.txt` 过滤，**只录收费场**
-5. 匹配成功的推入 Redis `luzhi` 队列
+5. 匹配成功的推入 Redis 队列：RTMP 进 `luzhi`，HLS 进 `luzhi_hls`
+6. 录制完成后处理 `videosduration` 队列，更新数据库时长
+
+**暂停开关（V2026.06.22）：**
+```python
+ENABLE_SCAN = False      # 暂停 videoList 扫描和新任务推送
+ENABLE_TG_SEND = False   # 暂停发送 preview album 到 Telegram 群
+```
+当两个开关都为 `False` 时，`live_monitor.py` 只保留 `videosduration` 时长更新，不再产生新录制任务、不再发送群消息。
 
 **只录收费场：**
 `check_filter(author_id, title, is_charge_room)` 要求 `is_charge_room=true`。免费场直接 `[SKIP] 非收费场`。
@@ -3679,19 +3687,19 @@ grep "网盘判断(byString)" /home/www/tomcat/apache-tomcat-9.0.102/logs/catali
 同一个主播每次开播可能分配不同的 `roomId`。例如狗哥（UID 117431）同一时段换了 4 个房间：
 - `396646` → `397145` → `397164` → `397189`
 
-前面几次如果是免费场会被跳过，只有收费场才 `[MATCH] 匹配成功` 并推入 `luzhi`。
+前面几次如果是免费场会被跳过，只有收费场才 `[MATCH] 匹配成功` 并推入队列。
 
 **关键配置：**
 | 配置项 | 路径/值 | 说明 |
 |--------|---------|------|
 | `goodauthor1.txt` | `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/download/goodauthor1.txt` | 主播过滤列表，格式 `昵称=UID`，如 `狗哥=117431` |
 | `record.log` | `download/record.log` | 房间处理记录（去重用） |
-| Redis | `DB 4` | `luzhi` 队列 |
+| Redis | `DB 4` | `luzhi`（RTMP）、`luzhi_hls`（HLS）、`videos`、`videosduration` |
 | MySQL | `test` 库 | `waiwang2_video`、`wanwu_author` |
 
 **日志：**
 ```bash
-tail -f /home/www/code/ww/live_monitor_screen.log
+tail -f /tmp/livemonitor.log
 ```
 
 **日志示例：**
@@ -3707,7 +3715,7 @@ tail -f /home/www/code/ww/live_monitor_screen.log
 
 ### 1. 架构概述
 
-系统通过多个 `screen` 会话协同工作，完成直播 RTMP 流抓取、录制为 MP4、并推送到 Telegram/QQ Bot 的全流程。
+系统通过多个 `screen` 会话/守护脚本协同工作，完成直播流发现、录制为 MP4、并推送到 Telegram/QQ Bot 的全流程。
 
 ```mermaid
 flowchart LR
@@ -3716,12 +3724,13 @@ flowchart LR
     end
     
     subgraph 录制层
-        streama[stream2mpXJP\nffmpeg 录制]
-        stream2mp4[stream2mp4\nJava 管理进程]
+        streama[stream2mpXJP\nffmpeg 录制 RTMP]
+        hls_recorder[hls_recorder.py\nffmpeg 分段录制 HLS]
     end
 
     subgraph Redis队列
         luzhi[luzhi 调度队列]
+        luzhi_hls[luzhi_hls 调度队列]
         videos[videos 上传队列]
     end
 
@@ -3729,50 +3738,79 @@ flowchart LR
         upload_bot[donwloadFileAndSendToUser.py\nTelegram/QQ 发送]
     end
 
-    monitor -->|lpush| luzhi
+    monitor -->|RTMP 任务 lpush| luzhi
+    monitor -->|HLS 任务 lpush| luzhi_hls
     luzhi --> streama
+    luzhi_hls --> hls_recorder
     streama -->|lpush| videos
+    hls_recorder -->|lpush| videos
     videos --> upload_bot
     upload_bot -->|发送成功| TG[Telegram VIP频道]
     upload_bot -->|记事本| QQ[QQ Bot]
 ```
 
-### 2. screen 会话说明
+### 2. 进程/会话说明
 
-| 会话名 | 工作目录 | 核心进程 | 职责 |
-|--------|----------|----------|------|
-| `livemonitor` | `/home/www/code/ww` | `live_monitor.py` | 轮询发现直播，匹配过滤，推入 `luzhi` |
+| 名称 | 工作目录 | 核心进程/脚本 | 职责 |
+|------|----------|--------------|------|
+| `livemonitor` | `/home/www/code/ww` | `live_monitor.py` | 轮询发现直播，匹配过滤，推入 `luzhi`/`luzhi_hls` |
+| `streama` | `wanwurecorder` | `stream2mpXJP` | 从 `luzhi` 取任务，调用 ffmpeg 录制 RTMP |
+| `hls_recorder` | `/home/www/code/ww` | `hls_recorder.py` | 从 `luzhi_hls` 取任务，ffmpeg 分段接力录制 HLS |
 | `stream` | `wanwurecorder` | `PcapStreamAnalyzer` | 抓包分析（旧版，已停用） |
 | `stream2` | `wanwurecorder` | `PcapStreamAnalyzer2` | 抓包分析2（旧版，已停用） |
-| `streama` | `wanwurecorder` | `stream2mpXJP` | 从 `luzhi` 取任务，调用 ffmpeg 录制 RTMP |
 | `stream2mp4` | `wanwurecorder` | `stream2mp4` | 管理进程（当前无活跃 ffmpeg） |
 
 ### 3. 录制 -> 上传流程
 
-**步骤 1：任务调度**
-- `stream2mpXJP` 从 Redis `luzhi` 队列 `BRPOPLPUSH` 获取任务
-- 任务格式（`luzhi_bak` 中的样例）：
-  ```
-  rtmp://play2.fjefu.cn/ww/room_XXX?txSecret=...&userId=267412&token=...,@linyuan56,/home/www/telegramsender/.../data/标题_vid_作者_日期.mp4,标题_vid_作者_日期,bc_id,135,cover_url,path2,0,作者,0,1
-  ```
+**任务格式（`luzhi`/`luzhi_hls` 通用）：**
+```
+{rtmp_or_hls_url},@linyuan56,/root/data/disk/标题_vid_作者_日期.mp4,标题_vid_作者_日期,bc_id,135,cover_url,path2,0,作者,0,1
+```
 
-**步骤 2：ffmpeg 录制**
-- `stream2mpXJP` 启动 `ffmpeg -i {rtmp_url} -c copy -f mp4 {output_path}`
-- 可同时录制多路（常见 2~3 路并发）
+**RTMP 路径（免费场 / zb 指令免费场）：**
+1. `stream2mpXJP` 从 Redis `luzhi` 队列 `BRPOPLPUSH` 获取任务
+2. 启动 `ffmpeg -i {rtmp_url} -c copy -f mp4 {output_path}`
+3. ffmpeg 退出后，用 `com.coremedia.iso.IsoFile` 读取 MP4 时长
+4. `lpush("videos", item.substring(item.indexOf(",") + 1))` —— 去掉 URL，只保留从 `@linyuan56` 开始的字段
+5. `lpush("videosduration", roomid + "," + minutes + ":" + seconds + ",1")`
+6. `lrem("luzhi_bak", item)` 清理已完成任务
 
-**步骤 3：录制完成后入队**
-- 等待 ffmpeg 进程退出
-- 读取 MP4 时长（`IsoFile` 库解析 moov box）
-- `lpush("videos", item.substring(item.indexOf(",") + 1))` —— 去掉 RTMP URL，只保留从 `@linyuan56` 开始的字段
-- `lrem("luzhi_bak", item)` 清理已完成任务
+**HLS 路径（收费场 / zb 指令收费场）：**
+1. `hls_recorder.py` 从 Redis `luzhi_hls` 队列 `BRPOPLPUSH` 获取任务
+2. 每 45-58 秒调用 `getRoomInfo` 刷新 HLS token
+3. 用 ffmpeg 分段接力录制：每个分段 40-50 秒，从最新片段开始（`-live_start_index -1`）
+4. 直播结束后 concat 合并所有分段为单个 MP4
+5. `rpush("videos", video_task)` 推入上传队列
+6. `rpush("videosduration", roomid + "," + minutes + ":" + seconds + ",1")`（V2026.06.22 与 stream2mpXJP 格式统一）
+7. 清理临时分段文件和目录
 
-**步骤 4：上传消费**
+**上传消费**
 - `donwloadFileAndSendToUser.py` 持续轮询 `videos` 队列（`BRPOPLPUSH` 到 `videos_bak`）
 - 使用 Telethon 发送到 Telegram VIP 频道（`-1003576154874`）
 - 或调用 QQ Bot API 发送记事本
 - 成功上传后删除本地 MP4 文件
 
-### 4. 孤儿文件问题（V2026.04.14）
+### 4. zb 指令录制（V2026.06.22 支持 HLS）
+
+**入口**：Telegram/QQ Bot 发送 `zb{shortId}`，由 `RobotServiceImpl.handleZhiboCommand()` 处理。
+
+**流程**：
+1. 优先查数据库 `waiwang2_video` 获取最近一条直播记录
+2. 无记录时调用 `/home/www/code/ww/get_room_by_shortid.py {shortId}` 实时获取
+3. `get_room_by_shortid.py` 内部检查：
+   - `getHomeInfo.isLive == 1`
+   - `getRoomInfo.live == true`
+   - 未开播返回 `"主播未开播"` 或 `"主播已下播"`
+4. 根据 `pullUrl` 协议分流：
+   - `rtmp://` → 推入 `luzhi` 队列（`stream2mpXJP` 录制）
+   - `http(s)://...m3u8` → 推入 `luzhi_hls` 队列（`hls_recorder.py` 录制）
+5. 返回用户提示消息，区分 RTMP/HLS 录制
+
+**重要变更**：
+- 旧版 `get_room_by_shortid.py` 会把收费场 HLS 强转为 `rtmp://play.gqfvcj.cn/...`，但该 RTMP 实际已不可用
+- 新版保留原始 HLS URL，由 `hls_recorder.py` 分段接力录制
+
+### 5. 孤儿文件问题（V2026.04.14）
 
 **现象**：`data/` 目录下出现大量录制完成但从未上传的 MP4 文件。
 
@@ -3789,7 +3827,7 @@ flowchart LR
 **后续建议**：
 如需根治，应修改 `stream2mpXJP.java` 的 `RtmpToMp4Task.run()`，在 `readDuration()` 失败时**仍然强制 `lpush` 到 `videos`**（可以 duration=0），确保文件不会被遗弃。
 
-### 5. 录制预过滤系统（V2026.04.16）
+### 6. 录制预过滤系统（V2026.04.16）
 
 **问题**：盲目录制导致大量流量浪费，`data/` 目录堆积大量低价值/引流直播间视频。
 
@@ -3814,12 +3852,14 @@ flowchart LR
 - `luzhi_bak` 积压的 2700+ 旧任务一次性清理完毕
 - `luzhi` / `luzhi_bak` 当前均保持为 0
 
-### 6. 队列监控命令
+### 7. 队列监控命令
 
 ```bash
 # 检查录制调度队列
 redis-cli -n 4 llen luzhi
 redis-cli -n 4 llen luzhi_bak
+redis-cli -n 4 llen luzhi_hls
+redis-cli -n 4 llen luzhi_hls_bak
 
 # 检查上传队列
 redis-cli -n 4 llen videos
@@ -3832,7 +3872,7 @@ grep "_skip" /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/
 screen -ls | grep stream
 
 # 检查活跃 ffmpeg
-lsof +D /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/data/ | grep ffmpeg
+ps aux | grep ffmpeg | grep -v grep
 ```
 
 ---
@@ -6028,3 +6068,136 @@ if (messageThreadId == null) {
 ---
 
 *最后更新: 2026-06-20*
+
+
+### 2026-06-22
+
+#### 1. 收费场录制从 RTMP 切换为 HLS
+
+**背景**：
+- 免费场 `getRoomInfo` 返回 RTMP，可直接录制
+- 收费场 `getRoomInfo` 返回 HLS（`play-trial1.hbavrra.cn`），历史 RTMP 转换全部失败
+- HLS token 有效期约 60 秒，APP 约每 32 秒刷新一次 `txSecret/txTime`
+
+**新增文件**：
+- `/home/www/code/ww/hls_recorder.py`：HLS 收费场录制服务
+- `/home/www/code/ww/hls_recorder_daemon.sh`：守护脚本
+
+**核心逻辑**：
+1. 消费 Redis `luzhi_hls` 队列中的 HLS 录制任务
+2. 每 45-58 秒调用 `getRoomInfo` 刷新 HLS token（带随机 jitter）
+3. 用 ffmpeg 直接拉 HLS，每 40-50 秒录制一个 MP4 分段（`-live_start_index -1`）
+4. 直播结束后 concat 合并所有分段
+5. 推入 `videos` 队列和 `videosduration` 队列
+
+**重要参数**：
+```python
+SEGMENT_DURATION_MIN = 40.0
+SEGMENT_DURATION_MAX = 50.0
+TOKEN_REFRESH_JITTER_MIN = 45.0
+TOKEN_REFRESH_JITTER_MAX = 58.0
+```
+
+#### 2. live_monitor 增加暂停开关
+
+**文件**：`/home/www/code/ww/live_monitor.py`
+
+**新增开关**：
+```python
+ENABLE_SCAN = False      # 暂停 videoList 扫描和新任务推送
+ENABLE_TG_SEND = False   # 暂停发送 preview album 到 Telegram 群
+```
+
+当两个开关都为 `False` 时，`live_monitor.py` 只保留 `videosduration` 时长更新，不再扫描新直播间、不再发送群消息。
+
+#### 3. zb 指令支持 HLS 收费场
+
+**文件**：
+- `/home/www/code/ww/get_room_by_shortid.py`
+- `/home/www/code/fundalarmcode/robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`
+
+**变更**：
+1. `get_room_by_shortid.py` 不再把收费场 HLS 强转为 RTMP，保留原始 HLS URL
+2. 返回 JSON 新增 `is_hls` 字段
+3. `RobotServiceImpl.handleZhiboCommand()` 根据 `is_hls` 分流：
+   - RTMP → `luzhi` 队列（`stream2mpXJP`）
+   - HLS → `luzhi_hls` 队列（`hls_recorder.py`）
+4. HLS 跳过 RTMP 有效性校验
+5. 去重检查覆盖 `luzhi_hls` / `luzhi_hls_bak`
+
+#### 4. videosduration 格式统一
+
+**文件**：`/home/www/code/ww/hls_recorder.py`
+
+`hls_recorder.py` 推 `videosduration` 的格式从 `room_id,秒数` 改为与 `stream2mpXJP` 一致：
+```
+room_id,分钟:秒数,1
+```
+例如：`433469,22:37,1`
+
+#### 5. 知识库更新
+
+更新 `AGENTS.md` "视频录制与上传系统"章节：
+- 新增 HLS 录制路径说明
+- 新增 `hls_recorder.py` 进程说明
+- 新增 `zb` 指令录制说明
+- 更新队列监控命令
+
+**部署**：
+- Python 脚本：直接替换 `/home/www/code/ww/` 下相关文件
+- Java 服务：`mvn clean package -DskipTests`，替换 Tomcat `ROOT.war`，重启 Tomcat
+
+---
+
+## PikPak 离线下载与视频队列系统
+
+### 1. 组件与路径
+
+| 组件 | 路径 | 说明 |
+|------|------|------|
+| huifang24 离线下载器 | `/home/www/pikpakoffline/PikPakAPI-huifang24/wanwuhuifang.py` | 读取 `wanwuhuifang.txt`，向 PikPak 提交离线下载；同时消费 Redis `videos` 队列 |
+| donw 下载/发送器 | `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/donwloadFileAndSendToUser.py` | 消费同一 `videos` 队列，负责非 VIP / 普通下载与发送 |
+| 同步循环 | `/home/www/pikpakoffline/PikPakAPI-huifang24/run_huifang24_sync_loop.py` | 每 5 秒运行 `share.py`、`update_zmq_by_title.py`、`update_zmq_by_url.py`、`update_wanwu.py`、`update_wanwu_by_url.py` |
+| 空间查询 | `/home/www/pikpakoffline/PikPakAPI-huifang24/share.py` | 调用 `client.get_quota_info()` 查询 PikPak 容量（当前账号：10 TiB 总量 / 约 6.32 TiB 剩余） |
+
+### 2. Redis `videos` 队列共享规则
+
+- 队列位置：**Redis DB 4**，key `videos`。
+- `huifang24` 只处理 **VIP 用户**的任务（`tb_wallet.vip` 非空且非 0）。
+- **非 VIP 任务必须保留在队列中**，由 `donw` 处理。
+- **2026-06-23 修复**：`wanwuhuifang.py` 原逻辑会 `r.lrem('videos', 1, task)` 移除非 VIP 任务，已改为只 `continue` 跳过；并增加 `_NONVIP_LOGGED_UIDS` 集合控制每个 uid 只打印一次跳过日志，避免刷屏。
+
+### 3. 典型任务格式
+
+以 `wanwu_video` 17 字段任务为例：
+```text
+@Xbxd09,https://kelly.dgshwhcb.top/128296_IOS_20250301212116_seller_action_video.mp4,jk调_作品id--141213_用户id--128296_昵称--萬一s_...,ww141213,-1003205013648,https://img.vefoji.cn/.../cover.png,sk,999,萬一s,0,4,7638179629,118077,,1,,
+```
+字段说明：
+- `0` chatroom / 用户标识
+- `1` URL
+- `2` title
+- `3` vid
+- `4` uid（群 ID 或用户 ID）
+- `5` cover
+- `6` share_url / tria（`sk` 表示原始链接）
+- `7` price / 扩展字段
+- `8` 昵称
+- `9` 扩展字段
+- `10` vip 等级
+- `11` 用户真实 ID（私聊用）
+- `12` message id
+- `13` thread id
+- `14` source_bot
+- `15-16` 小飞机账号等扩展字段
+
+### 4. 最近数据维护
+
+- `taolusm_crawler.py` 完成全站分类抓取；`test.zmq_video` 去重后 **307,495** 条，`taolusm` source 约 **82.3k**。
+- `test.zmq_video` 按 `title_norm` 去重，迁移 `url2`，删除重复记录。
+- `test.wanwu_video` 探测并删除 **504** 条死链（`tria='sk'`）。
+- `wanwuhuifang.txt` 生成规则：排除 `51player` / `.xyz`，顺序为 `wanwu_video sk` → 新 `taolusm sk` → 旧 legacy sk。
+
+---
+
+*最后更新: 2026-06-23*

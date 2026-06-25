@@ -158,7 +158,7 @@ public class RobotServiceImpl implements RobotService {
 			System.out.println("[resolveSourceBot] currentBot=" + botUsername + ", chatId=" + chatId);
 			if ("summer0011999bot".equals(botUsername)) {
 				return "0";
-			} else if ("yueyueruanruanbot".equals(botUsername)) {
+			} else if ("usdtwwtlbot".equals(botUsername)) {
 				return "3";
 			}
 		}
@@ -177,24 +177,15 @@ public class RobotServiceImpl implements RobotService {
 		String coverString = null;
 		String author = null;
 		String avatarUrl = null;
+		String roomId = null;
 		int videoDbId = 0;
+		boolean isHls = false;
+		boolean apiOk = false;
+		String apiErr = null;
+		org.json.JSONObject json = null;
 
-		// 1. 先查数据库
-		Waiwang2VideoExample examplezb = new Waiwang2VideoExample();
-		examplezb.createCriteria().andAuthorEqualTo(String.valueOf(shortId));
-		examplezb.setOrderByClause("dt desc");
-		PageHelper.startPage(1, 1);
-		List<Waiwang2Video> videozbs = waiwang2VideoMapper.selectByExample(examplezb);
-		if (videozbs != null && !videozbs.isEmpty()) {
-			Waiwang2Video videozb = videozbs.get(0);
-			videoDbId = videozb.getId();
-			url = videozb.getType();
-			title = videozb.getTitle();
-			coverString = videozb.getCover();
-			author = videozb.getNickname();
-			avatarUrl = videozb.getPhoto();
-		} else {
-			System.out.println("[ZB_API] 数据库无记录，尝试通过API获取: shortId=" + shortId);
+		// 每次调用都通过 Python 获取当前真实直播间，避免复用旧记录的 room_id / bc{id}
+		for (int attempt = 0; attempt < 2; attempt++) {
 			try {
 				Process process = Runtime.getRuntime().exec(new String[]{
 						"python3", "/home/www/code/ww/get_room_by_shortid.py", String.valueOf(shortId)
@@ -208,85 +199,51 @@ public class RobotServiceImpl implements RobotService {
 					output.append(line);
 					lastLine = line;
 				}
-				org.json.JSONObject json = new org.json.JSONObject(lastLine.isEmpty() ? output.toString() : lastLine);
+				json = new org.json.JSONObject(lastLine.isEmpty() ? output.toString() : lastLine);
 				if (json.getInt("code") == 0) {
-					url = json.getString("pull_url");
+					String tmpUrl = json.getString("pull_url");
+					boolean tmpHls = json.optBoolean("is_hls", false);
+					// RTMP 直播校验链接有效性，HLS 由 hls_recorder 自行处理
+					if (!tmpHls && !UrlValidator.validateWithFFmpeg(tmpUrl)) {
+						System.out.println("[ZB_API] RTMP失效，尝试重新获取: shortId=" + shortId + ", attempt=" + attempt);
+						apiErr = "RTMP链接无效";
+						continue;
+					}
+					url = tmpUrl;
 					title = json.getString("title");
 					coverString = json.optString("cover", "");
 					author = json.optString("nickname", "");
 					avatarUrl = json.optString("photo", "");
-					System.out.println("[ZB_API] API获取成功: room=" + json.getInt("room_id") + ", title=" + title);
-
-					Waiwang2VideoExample examplezb2 = new Waiwang2VideoExample();
-					examplezb2.createCriteria().andAuthorEqualTo(String.valueOf(shortId));
-					examplezb2.setOrderByClause("dt desc");
-					PageHelper.startPage(1, 1);
-					List<Waiwang2Video> videozbs2 = waiwang2VideoMapper.selectByExample(examplezb2);
-					if (videozbs2 != null && !videozbs2.isEmpty()) {
-						videoDbId = videozbs2.get(0).getId();
-					}
+					isHls = tmpHls;
+					roomId = String.valueOf(json.getInt("room_id"));
+					apiOk = true;
+					System.out.println("[ZB_API] API获取成功: room=" + roomId + ", title=" + title + ", isHls=" + isHls);
+					break;
 				} else {
-					String err = json.optString("error", "未知错误");
-					System.out.println("[ZB_API] API获取失败: " + err);
-					return "id可能有误：" + err;
+					apiErr = json.optString("error", "未知错误");
+					System.out.println("[ZB_API] API获取失败: " + apiErr);
+					break; // API 已返回明确错误，不再重试
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
-				System.out.println("[ZB_API] 调用API异常: " + e.getMessage());
-				return "id可能有误";
+				apiErr = e.getMessage();
+				System.out.println("[ZB_API] 调用API异常: " + apiErr);
+				break;
 			}
 		}
-
-		// 校验 RTMP 链接是否有效，无效则重新获取
-		if (!UrlValidator.validateWithFFmpeg(url)) {
-			System.out.println("[ZB_API] RTMP失效，尝试重新获取: shortId=" + shortId);
-			try {
-				Process process = Runtime.getRuntime().exec(new String[]{
-						"python3", "/home/www/code/ww/get_room_by_shortid.py", String.valueOf(shortId)
-				});
-				process.waitFor();
-				BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-				StringBuilder output = new StringBuilder();
-				String lastLine = "";
-				String line;
-				while ((line = reader.readLine()) != null) {
-					output.append(line);
-					lastLine = line;
-				}
-				org.json.JSONObject json = new org.json.JSONObject(lastLine.isEmpty() ? output.toString() : lastLine);
-				if (json.getInt("code") == 0) {
-					url = json.getString("pull_url");
-					title = json.getString("title");
-					coverString = json.optString("cover", "");
-					author = json.optString("nickname", "");
-					avatarUrl = json.optString("photo", "");
-					System.out.println("[ZB_API] RTMP重新获取成功: room=" + json.getInt("room_id") + ", title=" + title);
-
-					Waiwang2VideoExample examplezb3 = new Waiwang2VideoExample();
-					examplezb3.createCriteria().andAuthorEqualTo(String.valueOf(shortId));
-					examplezb3.setOrderByClause("dt desc");
-					PageHelper.startPage(1, 1);
-					List<Waiwang2Video> videozbs3 = waiwang2VideoMapper.selectByExample(examplezb3);
-					if (videozbs3 != null && !videozbs3.isEmpty()) {
-						videoDbId = videozbs3.get(0).getId();
-					}
-				} else {
-					String err = json.optString("error", "未知错误");
-					System.out.println("[ZB_API] RTMP重新获取失败: " + err);
-					return "主播还未开播或直播已结束";
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
-				System.out.println("[ZB_API] RTMP重新获取异常: " + e.getMessage());
+		if (!apiOk) {
+			if (apiErr != null && (apiErr.contains("未开播") || apiErr.contains("已下播") || apiErr.contains("RTMP链接无效"))) {
 				return "主播还未开播或直播已结束";
 			}
+			return "id可能有误：" + (apiErr != null ? apiErr : "未知错误");
 		}
 
-		String roomId = "";
-		try {
-			roomId = url.split("_")[1].split("\\?")[0];
-		} catch (Exception e) {
-			roomId = String.valueOf(shortId);
+		// Python 脚本 get_room_by_shortid.py 在 INSERT 后已查询自增 ID
+		// 并随 JSON 返回 video_db_id 字段，Java 直接读取，避免跨连接查询不一致
+		videoDbId = json.optInt("video_db_id", 0);
+		System.out.println("[ZB_API] waiwang2_video id=" + videoDbId + ", vid=" + roomId + " (from Python)");
+		if (videoDbId == 0) {
+			return "创建直播记录失败，未获取到自增ID";
 		}
 
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss");
@@ -314,9 +271,12 @@ public class RobotServiceImpl implements RobotService {
 				System.out.println("[ZB_LUZHI] Redis SETNX发现重复: room=" + roomId);
 			} else {
 				jedisClient.expire(recordingKey, 3600);
-				List<String> luzhiItems = jedisClient.lrange("luzhi", 0, -1);
-				List<String> luzhiBakItems = jedisClient.lrange("luzhi_bak", 0, -1);
-				String roomMarker = "bc" + videoDbId;
+				// 按 roomId 去重，避免同一直播间重复录制
+				String roomMarker = "room_" + roomId;
+				String targetQueue = isHls ? "luzhi_hls" : "luzhi";
+				String targetBakQueue = isHls ? "luzhi_hls_bak" : "luzhi_bak";
+				List<String> luzhiItems = jedisClient.lrange(targetQueue, 0, -1);
+				List<String> luzhiBakItems = jedisClient.lrange(targetBakQueue, 0, -1);
 				for (String qi : luzhiItems) {
 					if (qi == null || !qi.contains(roomMarker)) continue;
 					existsInQueue = true;
@@ -341,9 +301,10 @@ public class RobotServiceImpl implements RobotService {
 			System.out.println("[ZB_LUZHI] 队列中已存在相同直播间，跳过: room=" + roomId);
 			return "🎥 该直播间已在录制队列中，请稍候。\n\n标题: " + title;
 		}
-		jedisClient.lpush("luzhi", message);
-		System.out.println("[ZB_LUZHI] 推入录制队列: room=" + roomId + ", nick=" + author + ", user=" + identifier);
-		return "🎥 主播正在直播中，已开始录制！\n\n标题: " + title + "\n\n录制完成后会自动发送视频文件，请稍候。";
+		String targetQueue = isHls ? "luzhi_hls" : "luzhi";
+		jedisClient.lpush(targetQueue, message);
+		System.out.println("[ZB_LUZHI] 推入" + (isHls ? "HLS" : "RTMP") + "录制队列: room=" + roomId + ", bc" + videoDbId + ", nick=" + author + ", user=" + identifier);
+		return "🎥 主播正在直播中，已开始" + (isHls ? "HLS" : "RTMP") + "录制！\n\n标题: " + title + "\n\n录制完成后会自动发送视频文件，请稍候。";
 	}
 
 	public void setTelegramChannelMonitor(TelegramChannelMonitor monitor) {
@@ -1498,35 +1459,7 @@ public class RobotServiceImpl implements RobotService {
 				}
 				return;
 			}
-			Waiwang2VideoExample examplezb = new Waiwang2VideoExample();
-			examplezb.createCriteria().andAuthorEqualTo(vid + "");
-			examplezb.setOrderByClause("dt desc");
-			PageHelper.startPage(1, 1);
-			List<Waiwang2Video> videozbs = waiwang2VideoMapper.selectByExample(examplezb);
-			if (videozbs != null && !videozbs.isEmpty()) {
-				Waiwang2Video videozb = videozbs.get(0);
-				url = videozb.getType();
-				title = videozb.getTitle();
-				coverString = videozb.getCover();
-				author = videozb.getNickname();
-				avatarUrl = videozb.getPhoto();
-//				videozb.setGoodtag(1);
-//				// 更新数据库：
-//				waiwang2VideoMapper.updateByPrimaryKeySelective(video2);
-
-			} else {
-				replyText += "id可能有误\n";
-				replyMessage.setText(replyText);
-
-				try {
-					getSender().execute(replyMessage);
-				} catch (TelegramApiException e1) {
-					// TODO Auto-generated catch block
-					e1.printStackTrace();
-					log.error("服务器异常");
-				}
-				return;
-			}
+			// 不再查 waiwang2_video 表，由 handleZhiboCommand 调用 Python 脚本自行校验并自动入库
 			break;
 		default:
 //			replyText += "指令可能有误 ww tl tg开头才行\n";

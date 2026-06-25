@@ -199,6 +199,21 @@
             "appId": "1904143465",
             "clientSecret": "hP8rbL6rdPCznbQF5vmdVNG93ytplifd",
             "name": "机器人40"
+        },
+        {
+            "appId": "1904169233",
+            "clientSecret": "LE83yuqnkigfffghjlorv05BHOVdlu3D",
+            "name": "机器人41"
+        },
+        {
+            "appId": "1904546420",
+            "clientSecret": "meWPJD840xvtssstvx048DIOUbiqz8IS",
+            "name": "机器人42"
+        },
+        {
+            "appId": "1904662531",
+            "clientSecret": "eFeqppcCYgbIm36v",
+            "name": "机器人43"
         }
     ]
 }
