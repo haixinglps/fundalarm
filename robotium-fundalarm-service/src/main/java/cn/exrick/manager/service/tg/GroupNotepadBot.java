@@ -528,8 +528,14 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 String info = safeDisplayName + "," + safeUrl + "," + safeTitle + "," + cmd + "," + chatId + ","
                         + safeCover + "," + safeByString + "," + safeWpString + "," + safeAuthor + "," + zhindex + ",4," + userId + "," + messageId + "," + (messageThreadId != null ? messageThreadId : "") + ",1" + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
                 System.out.println("[GroupNotepadBot] 队列信息: " + info);
-                jedisClient.rpush("videos", info);
-                System.out.println("[GroupNotepadBot] 已推送到队列(vipok=4): " + cmd);
+                boolean isWckbot = safeUrl.contains("wckbot");
+                if (isWckbot) {
+                    jedisClient.rpush("wckbot_extract", info);
+                    System.out.println("[GroupNotepadBot] 已推送到 wckbot_extract 队列(vipok=4): " + cmd);
+                } else {
+                    jedisClient.rpush("videos", info);
+                    System.out.println("[GroupNotepadBot] 已推送到队列(vipok=4): " + cmd);
+                }
             }
         }
         

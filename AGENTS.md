@@ -6200,4 +6200,84 @@ room_id,分钟:秒数,1
 
 ---
 
-*最后更新: 2026-06-23*
+*最后更新: 2026-06-28*
+
+### 2026-06-28
+
+#### Telegram 搜索汇总样式回退
+
+**文件**: `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`
+
+**变更**:
+1. `dealSearchInternal()` 中把 `sortNotepadByTime(responseT)` 改回 `responseT`，恢复“每个类型统计完立刻列出该类型结果”的老样式。
+2. `getAllWork()` 中把 `sortNotepadByTime(responseT)` 改回 `responseT`。
+3. 不再对搜索汇总文本调用 `escapeMarkdown()`：`sendChannelReply()` 已禁用 MarkdownV2（默认纯文本发送），转义会导致 `_`、`.`、`=` 等字符前出现可见的 `\`。
+4. 搜索路径中所有标题统一调用新增的 `cleanSearchTitle()` 方法，去掉 `\r`、`\n` 等干扰字符。
+
+#### 搜索结果标题清洗
+
+**文件**: `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`
+
+**变更**:
+- 新增 `cleanSearchTitle()` 方法，统一清洗所有搜索来源标题：
+  - 去掉 `\r`、`\n`、`#`
+  - 去掉 `!$CDATA$`、`![CDATA[`、`]]`
+  - 去掉 `【视频】`、`【图片】`
+  - 截断 `.mp4` 及其后的重复/后缀内容
+- `dealSearchInternal()` 和 `getAllWork()` 中所有标题获取点统一调用 `cleanSearchTitle()`。
+
+**示例**:
+- 清洗前：`7 !$CDATA$【视频】Uuu - 红绿灯把头磕破只为给主人当狗.mp4 Uuu 把头磕破只为给主人当狗？先看你能不能承`
+- 清洗后：`Uuu - 红绿灯把头磕破只为给主人当狗`
+
+**部署**: `mvn clean package -DskipTests` 后替换 Tomcat `ROOT.war` 并重启 Tomcat。
+
+#### wckbot 提取队列路由同步
+
+**背景**: `RobotServiceImpl.java` 已支持 `zm` 指令遇到 `url` 含 `wckbot` 时推入 `wckbot_extract` 队列，由家里 Chrome 自动完成余额支付并提取百度链接。`GroupNotepadBot` 和 `QQBotRealDataProcessor` 此前仍把 wckbot 作品推入 `videos` 传统队列，需要同步改造。
+
+**文件**:
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/tg/GroupNotepadBot.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/QQBotRealDataProcessor.java`
+- `wckbot_extract_worker_redis.py`
+- `wckbot_extractor.py`
+
+**变更**:
+1. `RobotServiceImpl.java`: wckbot 分支构造的任务字符串从简化的 6 字段改为复用原有 `videos` 队列的 17 字段完整格式，保留 `chatroom, url, title, cmd, chatid, cover, byString, wpString, author, zhindex, topicok, userId, messageId, threadId, sourceBot, feijiUsername, feijiPassword`，确保 `donwloadFileAndSendToUser.py` / `baidu_feiji_bridge.py` 后续消费时字段不缺失。
+2. `GroupNotepadBot.java`: 推队列前判断 `url.contains("wckbot")`，命中则推 `wckbot_extract`，否则仍推 `videos`。
+3. `QQBotRealDataProcessor.java`: `needDownload == true` 时判断 `videoInfo.url.contains("wckbot")`，命中则推 `wckbot_extract`，否则仍推 `videos`。
+4. `wckbot_extract_worker_redis.py`: 明确兼容原有 `videos` 17 字段格式；`get_post_id_from_task()` 扩展正则支持 `/zhibo/`、`/wangyou/`、`/aicai/` 三种分类；把原始详情页 URL 透传给 `extract_baidu_link()`。
+5. `wckbot_extractor.py`: `extract_baidu_link()` 新增可选 `detail_url` 参数，优先使用传入的原始 URL，避免只按 `/zhibo/` 硬编码。
+
+**隐藏 wckbot 提示**:
+- `RobotServiceImpl.java` 中 wckbot 分支不再回复"已加入 wckbot 特殊处理队列"等字样，改为复用普通 `zm` 的回复样式；URL 仍按原规则隐藏（非 `zhuanma`/`kelly` 不展示），网盘链接也按原规则隐藏，避免站长从聊天内容中识别出 wckbot 来源。
+
+**部署**:
+- Java: `mvn clean package -DskipTests` 后执行 `deploy.sh`，Tomcat PID 4059196。
+- Python: `pkill -f wckbot_extract_worker_redis.py` 后 `screen` 后台重新启动 worker。
+
+#### wckbot 作品搜索不到修复
+
+**问题**: 用户搜索 `POV脚底视角竖中指羞辱` 无结果。排查发现 `zmq_video` 中该作品存在（vid=11384117，title=【芃芃大人】POV脚底视角竖中指羞辱 JS260626~4），但 `duration` 为 NULL；`RobotServiceImpl.dealSearchInternal()` 对 `zmq_video` 有 `criteriazmq.andDurationIsNotNull()` 过滤，导致所有 wckbot 采集记录都被排除在搜索结果外。列表页没有时长字段，不能为了抓时长频繁访问详情页（容易被站长发现）。
+
+**修复**:
+- `wckbot_nightly_pusher.py`: 插入 `zmq_video` 时补填 `duration='0'`，避免新作品再出现 NULL。
+- 数据库: `UPDATE zmq_video SET duration='0' WHERE url LIKE '%wckbot%';` 共修复 **25** 条记录。
+- 未修改 Java 搜索逻辑。
+
+**验证**:
+- 修复后 `SELECT ... WHERE title LIKE '%POV脚底视角竖中指羞辱%' AND duration IS NOT NULL` 可返回 vid=11384117。
+
+
+#### baidu_feiji_bridge 强制共用 huifang24 的 pikpak.json
+
+**问题**: `baidu_feiji_bridge.py` 提交 PikPak 离线下载时偶发 `401 Unauthorized`，提示 `invalid refresh token`。排查发现 `baidu_feiji_bridge` 和 `donwloadFileAndSendToUser.py` 工作目录为 `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/`，而 `huifang24` / `huifang24_sync` 工作目录为 `/home/www/pikpakoffline/PikPakAPI-huifang24/`。`wanwuhuifang.py` 中 `PIKPAK_TOKEN_FILE = "pikpak.json"` 是相对路径，导致两组进程实际维护两个不同的 `pikpak.json` 文件，但使用的是同一个 PikPak 账号。一组刷新 token 后，另一组的 `refresh_token` 在服务器端失效。
+
+**修复**:
+- `baidu_feiji_bridge.py`: 导入 `wanwuhuifang` 后强制设置 `wanwuhuifang.PIKPAK_TOKEN_FILE = "/home/www/pikpakoffline/PikPakAPI-huifang24/pikpak.json"`，与 `huifang24`、`huifang24_sync`、`donwloadFileAndSendToUser.py` 共用同一个 token 文件。
+- 已提交并推送到 GitHub：`haixinglps/telegramvideo` 仓库，`baidu_feiji_bridge.py`。
+
+**部署**:
+- 重启 `baidu_feiji_bridge.py` 进程（PID 4091215）。
+

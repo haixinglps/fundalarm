@@ -272,19 +272,21 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
             if (needDownload) {
                 // 需要下载，推送到 Redis 队列
                 String info = buildRedisMessage(userId, videoInfo, content, nickname);
+                boolean isWckbot = videoInfo.url != null && videoInfo.url.contains("wckbot");
+                String queueKey = isWckbot ? "wckbot_extract" : REDIS_QUEUE_KEY;
                 
                 // 事务提交后推送
                 if (TransactionSynchronizationManager.isSynchronizationActive()) {
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
                         @Override
                         public void afterCommit() {
-                            jedisClient.rpush(REDIS_QUEUE_KEY, info);
-                            log.info("[QQBot] 推送到下载队列: user={}, vid={}", userId, vid);
+                            jedisClient.rpush(queueKey, info);
+                            log.info("[QQBot] 推送到{}队列: user={}, vid={}", isWckbot ? "wckbot_extract" : "下载", userId, vid);
                         }
                     });
                 } else {
                     // 无事务，直接推送
-                    jedisClient.rpush(REDIS_QUEUE_KEY, info);
+                    jedisClient.rpush(queueKey, info);
                 }
                 
                 // 4. 发送提示，同时返回 URL 和网盘链接
