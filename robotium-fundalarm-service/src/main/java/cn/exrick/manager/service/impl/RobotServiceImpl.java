@@ -727,8 +727,6 @@ public class RobotServiceImpl implements RobotService {
 				String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
 						"ch" + hit.getId());
 				String tt = cleanSearchTitle(hit.getArticle().getString("TX"));
-				if (tt.length() > 60)
-					tt = tt.substring(0, 60);
 				long rq = hit.getArticle().getLong("RQ");
 				String dt = sdf.format(new Date(rq));
 
@@ -2503,8 +2501,6 @@ public class RobotServiceImpl implements RobotService {
 				String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
 						"ch" + hit.getId());
 				String tt = cleanSearchTitle(hit.getArticle().getString("TX"));
-				if (tt.length() > 60)
-					tt = tt.substring(0, 60);
 				if (channelMsg.getFrom().getUserName() != null
 						&& channelMsg.getFrom().getUserName().contentEquals("kaikak09818")) {
 					tt = tt + "\t" + "电报链接：" + hit.getArticle().getString("UR");
