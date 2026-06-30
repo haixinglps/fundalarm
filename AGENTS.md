@@ -6281,3 +6281,39 @@ room_id,分钟:秒数,1
 **部署**:
 - 重启 `baidu_feiji_bridge.py` 进程（PID 4091215）。
 
+
+---
+
+*最后更新: 2026-06-30*
+
+### 2026-06-30
+
+#### ch 频道搜索结果改用长标题 TI 字段
+
+**问题**: 用户反馈 Telegram 搜索“覆面”时，`ch` 频道结果标题仍显示为 `250810-6` 这类短标题。此前已移除 `RobotServiceImpl` 中 60 字符截断，但效果依旧。
+
+**根因**: `isearch` 中 `ch` 频道文章索引时 `TX` 字段由 `TI`（长标题）+ `TX`（正文/文件名）拼接而成；代码中直接取 `TX` 字段并调用 `cleanSearchTitle()`，该清洗会截断 `.mp4` 及其后内容，导致最终只保留 `250810-6` 这类文件名前缀。真正的长标题存放在 `TI` 字段，例如：
+```
+TI : 《玩物社交内部 新》 20251213 视频7220 [572.4MB]
+TX : 251211-5.mp4 【第一视角】【覆面小妈】紫色很有韵味 251211-5 #覆面小妈
+```
+
+**修复文件**:
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/tg/GroupNotepadBot.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/QQBotRealDataProcessor.java`
+
+**变更**:
+1. `RobotServiceImpl` 新增 `getChannelTitle(Article article)` 方法：优先取 `TI` 字段，为空时回退到 `TX`，并统一走 `cleanSearchTitle()` 清洗。
+2. `RobotServiceImpl` 中所有 `ch` 标题展示点（搜索汇总、记事本、单条回复、频道视频列表）统一改用 `getChannelTitle()`。
+3. `GroupNotepadBot` 和 `QQBotRealDataProcessor` 中 `ch` 类型的标题提取也改为优先 `TI`、回退 `TX`，保持三端一致。
+
+**示例**:
+- 修复前：`250810-6`
+- 修复后：《玩物社交内部 新》 20250810 视频xxxx [xxxMB]
+
+**部署**:
+- 编译通过，执行 `deploy.sh` 全量部署。
+- Tomcat 已重启，新 PID `1779097`。
+- Git 提交：`f393bc1` fix: ch频道搜索结果使用长标题TI字段，回退TX。
+
