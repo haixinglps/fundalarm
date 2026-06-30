@@ -31,6 +31,7 @@ import cn.exrick.common.jedis.JedisClient;
 import cn.exrick.manager.isearch.Isearch;
 import cn.exrick.manager.isearch.query.Search;
 import cn.exrick.manager.isearch.query.SearchFactory;
+import cn.exrick.manager.isearch.util.ArticleUtil;
 import cn.exrick.manager.mapper.Taolu3VideoMapper;
 import cn.exrick.manager.mapper.TbWalletMapper;
 import cn.exrick.manager.mapper.Waiwang2VideoMapper;
@@ -395,8 +396,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         if (hits != null && hits.size() > 0) {
                             found = true;
                             url = hits.get(0).getArticle().getString("UR");
-                            String ti = hits.get(0).getArticle().getString("TI");
-                            title = (ti != null && !ti.trim().isEmpty()) ? ti : hits.get(0).getArticle().getString("TX");
+                            title = ArticleUtil.buildChannelTitle(hits.get(0).getArticle());
                             byString = hits.get(0).getArticle().getString("DL");
                             wpString = "";
                             cover = "";
@@ -588,8 +588,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                     
                     if (hits != null) {
                         for (int i = 0; i < hits.size() && i < 10000; i++) {
-                            String ti = hits.get(i).getArticle().getString("TI");
-                            String title = (ti != null && !ti.trim().isEmpty()) ? ti : hits.get(i).getArticle().getString("TX");
+                            String title = ArticleUtil.buildChannelTitle(hits.get(i).getArticle());
                             if (title != null && !title.isEmpty()) {
                                 // isearch 结果标记为 CH 类型（频道），id 使用 hit.getId() 与 RobotServiceImpl 保持一致
                                 // 使用 long 类型避免 ID 截断
