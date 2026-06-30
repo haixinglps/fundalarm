@@ -395,7 +395,8 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         if (hits != null && hits.size() > 0) {
                             found = true;
                             url = hits.get(0).getArticle().getString("UR");
-                            title = hits.get(0).getArticle().getString("TX");
+                            String ti = hits.get(0).getArticle().getString("TI");
+                            title = (ti != null && !ti.trim().isEmpty()) ? ti : hits.get(0).getArticle().getString("TX");
                             byString = hits.get(0).getArticle().getString("DL");
                             wpString = "";
                             cover = "";
@@ -587,7 +588,8 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                     
                     if (hits != null) {
                         for (int i = 0; i < hits.size() && i < 10000; i++) {
-                            String title = hits.get(i).getArticle().getString("TX");
+                            String ti = hits.get(i).getArticle().getString("TI");
+                            String title = (ti != null && !ti.trim().isEmpty()) ? ti : hits.get(i).getArticle().getString("TX");
                             if (title != null && !title.isEmpty()) {
                                 // isearch 结果标记为 CH 类型（频道），id 使用 hit.getId() 与 RobotServiceImpl 保持一致
                                 // 使用 long 类型避免 ID 截断

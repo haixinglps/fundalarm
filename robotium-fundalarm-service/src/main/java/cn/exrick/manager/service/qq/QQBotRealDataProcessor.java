@@ -942,7 +942,8 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                     if (hits != null && hits.size() > 0) {
                         com.zhongsou.search.core.query.Hit hit = hits.get(0);
                         info.url = hit.getArticle().getString("UR");
-                        info.title = hit.getArticle().getString("TX");
+                        String ti = hit.getArticle().getString("TI");
+                        info.title = (ti != null && !ti.trim().isEmpty()) ? ti : hit.getArticle().getString("TX");
                         info.byString = hit.getArticle().getString("DL");
                         info.wpString = "";
                         info.cover = "";

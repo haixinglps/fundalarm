@@ -41,6 +41,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import com.alibaba.dubbo.config.annotation.Service;
 import com.github.pagehelper.PageHelper;
 import com.github.pagehelper.PageInfo;
+import com.zhongsou.search.core.article.Article;
 import com.zhongsou.search.core.query.Hit;
 import com.zhongsou.search.core.query.Hits;
 
@@ -726,7 +727,7 @@ public class RobotServiceImpl implements RobotService {
 				Hit hit = hits.get(i);
 				String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
 						"ch" + hit.getId());
-				String tt = cleanSearchTitle(hit.getArticle().getString("TX"));
+				String tt = getChannelTitle(hit.getArticle());
 				long rq = hit.getArticle().getLong("RQ");
 				String dt = sdf.format(new Date(rq));
 
@@ -1279,7 +1280,7 @@ public class RobotServiceImpl implements RobotService {
 			}
 			if (hits != null) {
 				url = hits.get(0).getArticle().getString("UR");
-				title = hits.get(0).getArticle().getString("TX");
+				title = getChannelTitle(hits.get(0).getArticle());
 				byString = hits.get(0).getArticle().getString("DL");
 				wpString = "";
 				coverString = "";
@@ -2500,7 +2501,7 @@ public class RobotServiceImpl implements RobotService {
 				Hit hit = hits.get(i);
 				String link = TelegramDeepLink.generateLink(getSender().getBotUsername(),
 						"ch" + hit.getId());
-				String tt = cleanSearchTitle(hit.getArticle().getString("TX"));
+				String tt = getChannelTitle(hit.getArticle());
 				if (channelMsg.getFrom().getUserName() != null
 						&& channelMsg.getFrom().getUserName().contentEquals("kaikak09818")) {
 					tt = tt + "\t" + "电报链接：" + hit.getArticle().getString("UR");
@@ -2660,7 +2661,7 @@ public class RobotServiceImpl implements RobotService {
 					Hit hit = hits.get(i);
 					Map<String, Object> video = new HashMap<>();
 					video.put("id", hit.getId());
-					video.put("title", hit.getArticle().getString("TX"));
+					video.put("title", getChannelTitle(hit.getArticle()));
 					video.put("channel", hit.getArticle().getString("CH"));
 					video.put("duration", hit.getArticle().getString("CC"));
 					video.put("url", hit.getArticle().getString("UR"));
@@ -2896,6 +2897,17 @@ public class RobotServiceImpl implements RobotService {
 			s = s.substring(0, idx);
 		}
 		return s.trim();
+	}
+
+	private String getChannelTitle(Article article) {
+		if (article == null) {
+			return "";
+		}
+		String ti = article.getString("TI");
+		if (ti != null && !ti.trim().isEmpty()) {
+			return cleanSearchTitle(ti);
+		}
+		return cleanSearchTitle(article.getString("TX"));
 	}
 
 	private String secondsToHMS(String secondsStr) {
