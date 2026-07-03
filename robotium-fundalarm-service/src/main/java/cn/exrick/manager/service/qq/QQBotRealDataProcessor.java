@@ -928,7 +928,7 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                     }
                     info.url = tg.getUrl();
                     info.title = tg.getTitle();
-                    info.byString = tg.getChannel();
+                    info.byString = tg.getAuthor();
                     info.wpString = "";
                     info.cover = "";
                     info.author = "";
