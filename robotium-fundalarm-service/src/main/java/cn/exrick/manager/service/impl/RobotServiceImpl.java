@@ -102,6 +102,10 @@ public class RobotServiceImpl implements RobotService {
 	private String NOTIFY_URL;
 	@Value("${MCH_NAME}")
 	private String MCH_NAME;
+	@Value("${telegram.bot.username}")
+	private String telegramBotUsername;
+	@Value("${telegram.bot2.username}")
+	private String telegramBot2Username;
 	@Autowired
 	private TbDouyinGzMapper tbDouyinGzMapper;
 	@Autowired
@@ -157,10 +161,13 @@ public class RobotServiceImpl implements RobotService {
 		if (current != null) {
 			String botUsername = current.getBotUsername();
 			System.out.println("[resolveSourceBot] currentBot=" + botUsername + ", chatId=" + chatId);
-			if ("summer0011999bot".equals(botUsername)) {
+			if (botUsername != null && botUsername.equals(telegramBotUsername)) {
 				return "0";
-			} else if ("usdtwwtlbot".equals(botUsername)) {
+			} else if (botUsername != null && botUsername.equals(telegramBot2Username)) {
 				return "3";
+			} else {
+				// 会员bot返回自己的完整token，便于下游用自己的bot发送
+				return current.getBotToken();
 			}
 		}
 		System.out.println("[resolveSourceBot] currentBot=null, chatId=" + chatId + ", fallback to chatId");
@@ -168,7 +175,8 @@ public class RobotServiceImpl implements RobotService {
 			if (chatId.equals(-1003867299066L)) return "0";
 			if (chatId.equals(-1003992613609L)) return "3";
 		}
-		return "0";
+		// 默认按搜索bot/会员bot处理
+		return "3";
 	}
 
 	@Override
@@ -829,7 +837,8 @@ public class RobotServiceImpl implements RobotService {
 
 		Message receivedMessage = update.getMessage();
 		Long chatId = receivedMessage.getChatId();
-		String rechargeQQ = "3".equals(resolveSourceBot(chatId)) ? "3097758477" : "2167485304";
+		String sourceBotForQQ = resolveSourceBot(chatId);
+		String rechargeQQ = "0".equals(sourceBotForQQ) ? "2167485304" : "3097758477";
 
 		// https://t.me/c/3867299066/206 https://t.me/c/3867299066/206/417
 		// ========== 1. 判断是否为群组/频道 ==========

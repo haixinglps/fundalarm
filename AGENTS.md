@@ -2797,6 +2797,18 @@ String klineUrl = "https://www.okx.com/api/v5/market/candles?instId=" + fund.get
 └── bc43733/                                     # VIP视频处理
 ```
 
+### tele2 采集架构（2026-07-03更新）
+
+**新增频道**:
+| 频道 | 群ID | 视频数 | 平均时长 | 说明 |
+|---|---|---|---|---|
+| 群1-调教 | -1003460975141 | 5,681 | 42min | 标题+封面分开发送 |
+| 群2-第一视角 | -1003300283056 | 6,210 | 41min | 标题+封面分开发送 |
+
+**标题回溯机制**: 这两个群标题和视频是相邻两条消息（标题msg N + 视频msg N+1），`getfuture.py` 已修改为从旧→新排序处理，视频无标题时回溯 `msg.id-1` 取前一条消息的text。
+
+**Session**: 使用 `mybot2.session` (@kaikak09818)
+
 ### record.ini 格式
 
 ```ini
@@ -3050,6 +3062,34 @@ CREATE TABLE vip_payment (
 ```
 
 ---
+
+### 话题消息批量清理（2026-07-03）
+
+**脚本位置**: `clear_topic_messages.py`
+
+**功能**: 批量清空Telegram论坛群指定话题中的所有消息。
+
+**用法**:
+```bash
+cd /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main
+python3 clear_topic_messages.py        # 清理模式
+python3 clear_topic_messages.py scan   # 仅扫描
+```
+
+**配置**: 修改脚本顶部的 `TOPICS` 列表和 `DELETE_ACTIONS` 开关。
+
+**已知话题ID**:
+| 群 | 群ID | 话题ID |
+|---|---|---|
+| 320 套路淘露玩物原画质付费群 | -1003205013648 | 1, 59527, 61052 |
+| 386 vip群 | -1003867299066 | 206, 73579, 68225 |
+| 399 玩物会员群 | -1003992613609 | 1, 11, 9 |
+
+**Session要求**: 账号需有对应群的删除权限。
+- 320群: `/tmp/vip_check_mybot` (林/@xiaowangzi0072)
+- 386/399群: `/tmp/vip_check_kaikai_client3` (kai/@KaiKai09818)
+
+**注意**: 话题1(General)的msg1是话题创建系统消息，无法删除。
 
 ### 群成员管理脚本
 

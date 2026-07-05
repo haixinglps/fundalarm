@@ -15,8 +15,8 @@ public class ExecutorConfig {
 	public Executor asyncExecutor() {
 		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
 		executor.setCorePoolSize(Runtime.getRuntime().availableProcessors());
-		executor.setMaxPoolSize(20);
-		executor.setQueueCapacity(50);
+		executor.setMaxPoolSize(80);
+		executor.setQueueCapacity(200);
 		executor.setKeepAliveSeconds(60);
 		executor.setThreadNamePrefix("TelegramBot-");
 		executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());

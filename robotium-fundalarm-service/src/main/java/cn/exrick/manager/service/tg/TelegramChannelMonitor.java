@@ -74,6 +74,7 @@ extends TelegramLongPollingBot {
     private long lastUpdateId = 0L;
     private final Set<Long> targetGroupIds;
     private final Map<Long, List<Integer>> groupTopics;
+    private final boolean monitorAllGroups;
     private static final Map<Long, TelegramChannelMonitor> CHAT_TO_MONITOR = new ConcurrentHashMap<Long, TelegramChannelMonitor>();
     private static final Set<String> REGISTERED_BOTS = new HashSet<String>();
     static ThreadSafeFileWriter writerLog = null;
@@ -84,6 +85,10 @@ extends TelegramLongPollingBot {
     private static final Set<Long> PRIVATE_ADMIN_IDS = new HashSet<Long>(Arrays.asList(1399330035L));
 
     public TelegramChannelMonitor(String botToken, String botUsername, String channelUsername, DefaultBotOptions botOptions, RobotService robotService, Executor taskExecutor, Set<Long> targetGroupIds, Map<Long, List<Integer>> groupTopics) {
+        this(botToken, botUsername, channelUsername, botOptions, robotService, taskExecutor, targetGroupIds, groupTopics, false);
+    }
+
+    public TelegramChannelMonitor(String botToken, String botUsername, String channelUsername, DefaultBotOptions botOptions, RobotService robotService, Executor taskExecutor, Set<Long> targetGroupIds, Map<Long, List<Integer>> groupTopics, boolean monitorAllGroups) {
         super(botOptions, botToken);
         this.botToken = botToken;
         this.botUsername = botUsername;
@@ -91,6 +96,7 @@ extends TelegramLongPollingBot {
         this.taskExecutor = taskExecutor;
         this.targetGroupIds = targetGroupIds != null ? targetGroupIds : new HashSet();
         this.groupTopics = groupTopics != null ? groupTopics : new HashMap();
+        this.monitorAllGroups = monitorAllGroups;
         this.targetChannel = channelUsername.startsWith("@") ? channelUsername : "@" + channelUsername;
         for (Long gid : this.targetGroupIds) {
             CHAT_TO_MONITOR.put(gid, this);
@@ -199,7 +205,14 @@ extends TelegramLongPollingBot {
             }
             System.out.println("new message");
             System.out.println(update.hasChannelPost());
-            if (update.hasChannelPost() && this.targetChannel.equals("@" + update.getChannelPost().getChat().getUserName())) {
+            if (update.hasChannelPost()) {
+                if (this.monitorAllGroups) {
+                    System.out.println("【会员bot】忽略频道消息: " + update.getChannelPost().getChat().getUserName());
+                    return;
+                }
+                if (!this.targetChannel.equals("@" + update.getChannelPost().getChat().getUserName())) {
+                    return;
+                }
                 Message channelMsg = update.getChannelPost();
                 System.out.println(update.getChannelPost().getChat().getUserName());
                 Long chatId = channelMsg.getChatId();
@@ -243,11 +256,28 @@ extends TelegramLongPollingBot {
                             } else {
                                 System.out.println("\u53d1\u73b0\u7fa4\u7c7b\u578b:" + chatType);
                             }
+                            // \u4f1a\u5458bot\u5728\u4efb\u4f55\u7fa4\u91cc\u53ea\u641c\u7d22\u4e0d\u63d0\u53d6\uff0c\u79c1\u804a\u624d\u8d70\u63d0\u53d6
+                            if (this.monitorAllGroups) {
+                                System.out.println("\u3010\u4f1a\u5458bot\u3011\u7fa4\u91cc\u53ea\u641c\u7d22\u4e0d\u63d0\u53d6\uff0cchatId=" + chatId);
+                                try {
+                                    RobotServiceImpl.setCurrentBot(this);
+                                    this.robotService.dealSearch(update);
+                                }
+                                finally {
+                                    RobotServiceImpl.clearCurrentBot();
+                                }
+                                break block51;
+                            }
                             boolean vip = false;
                             int groupok = 0;
                             int topicok = 0;
                             if (!this.targetGroupIds.contains(chatId)) {
-                                System.out.println("333\u4e0d\u662f\u76ee\u6807\u7fa4\u7ec4\uff0c\u5f53\u524d\u7fa4\u7ec4ID: " + chatId);
+                                if (this.monitorAllGroups) {
+                                    System.out.println("\u3010\u4f1a\u5458bot\u3011\u76d1\u63a7\u6240\u6709\u7fa4\u7ec4\uff0c\u5f53\u524d\u7fa4\u7ec4ID: " + chatId);
+                                    groupok = 1;
+                                } else {
+                                    System.out.println("333\u4e0d\u662f\u76ee\u6807\u7fa4\u7ec4\uff0c\u5f53\u524d\u7fa4\u7ec4ID: " + chatId);
+                                }
                             } else {
                                 groupok = 1;
                             }
@@ -266,18 +296,17 @@ extends TelegramLongPollingBot {
                                 } else {
                                     System.out.println("\u8bdd\u9898IDs: " + messageThreadId);
                                     List<Integer> topics = this.groupTopics.get(chatId);
-                                    if (topics != null && !topics.isEmpty()) {
-                                        if (messageThreadId.equals(topics.get(0))) {
-                                            System.out.println("\u2705 \u6765\u81ea\u76ee\u6807\u7fa4\u7ec4\u7684\u76ee\u6807\u8bdd\u9898\uff0c\u5fc5\u987b\u54cd\u5e94\u3002");
-                                            topicok = 1;
-                                        } else if (topics.size() > 1 && messageThreadId.equals(topics.get(1))) {
-                                            System.out.println("\u2705 \u6765\u81ea\u76ee\u6807\u7fa4\u7ec4\u7684 \u5c0f\u98de\u673a\u7f51\u76d8 \u8bdd\u9898\uff0c\u5fc5\u987b\u54cd\u5e94\u3002");
-                                            topicok = 2;
-                                        } else {
-                                            System.out.println("\u6765\u81ea\u76ee\u6807\u7fa4\u7ec4\u7684\u5176\u4ed6\u8bdd\u9898,\u4e0d\u54cd\u5e94\u3002");
-                                        }
+                                    if (topics == null || topics.isEmpty()) {
+                                        System.out.println("\u3010\u4f1a\u5458bot\u3011\u672a\u914d\u7f6e\u8bdd\u9898\u9650\u5236\uff0c\u5141\u8bb8\u6240\u6709\u8bdd\u9898");
+                                        topicok = 1;
+                                    } else if (messageThreadId.equals(topics.get(0))) {
+                                        System.out.println("\u2705 \u6765\u81ea\u76ee\u6807\u7fa4\u7ec4\u7684\u76ee\u6807\u8bdd\u9898\uff0c\u5fc5\u987b\u54cd\u5e94\u3002");
+                                        topicok = 1;
+                                    } else if (topics.size() > 1 && messageThreadId.equals(topics.get(1))) {
+                                        System.out.println("\u2705 \u6765\u81ea\u76ee\u6807\u7fa4\u7ec4\u7684 \u5c0f\u98de\u673a\u7f51\u76d8 \u8bdd\u9898\uff0c\u5fc5\u987b\u54cd\u5e94\u3002");
+                                        topicok = 2;
                                     } else {
-                                        System.out.println("\u6765\u81ea\u76ee\u6807\u7fa4\u4f53\u672a\u914d\u7f6e\u8be5\u8bdd\u9898\uff0c\u4e0d\u54cd\u5e94\u3002");
+                                        System.out.println("\u6765\u81ea\u76ee\u6807\u7fa4\u7ec4\u7684\u5176\u4ed6\u8bdd\u9898,\u4e0d\u54cd\u5e94\u3002");
                                     }
                                 }
 
@@ -369,6 +398,10 @@ extends TelegramLongPollingBot {
 
     public String getBotUsername() {
         return this.botUsername;
+    }
+
+    public String getBotToken() {
+        return this.botToken;
     }
 
     private Long extractChatId(BotApiMethod<?> method) {
