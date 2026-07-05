@@ -146,7 +146,7 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
         if (message.hasCommandPrefix("zb")) {
             String zbVid = content.substring(2).trim();
             try {
-                String result = robotService.handleZhiboCommand(Integer.parseInt(zbVid), message.getUserId());
+                String result = robotService.handleZhiboCommand(Integer.parseInt(zbVid), message.getUserId(), null);
                 context.sendResults(result);
             } catch (Exception e) {
                 log.error("[QQBot] zb指令处理失败", e);

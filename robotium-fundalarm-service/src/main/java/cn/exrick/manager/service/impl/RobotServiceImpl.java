@@ -180,7 +180,7 @@ public class RobotServiceImpl implements RobotService {
 	}
 
 	@Override
-	public String handleZhiboCommand(int shortId, String identifier) {
+	public String handleZhiboCommand(int shortId, String identifier, Long userId) {
 		String url = null;
 		String title = null;
 		String coverString = null;
@@ -268,7 +268,9 @@ public class RobotServiceImpl implements RobotService {
 		}
 		String tt = safeTitle + "_" + safeNick + "_" + tmStr;
 		String up = "/root/data/disk/" + tt + ".mp4";
-		String info = identifier + "," + up + "," + tt + ",bc" + videoDbId + ",135," + (coverString != null ? coverString : "") + "," + up + ",0," + (author != null ? author : "") + ",0,1";
+		// Telegram 用户传入真实 UID，否则保持 135 占位（livemonitor 等非 Telegram 来源）
+		String targetUid = (userId != null && userId > 0) ? String.valueOf(userId) : "135";
+		String info = identifier + "," + up + "," + tt + ",bc" + videoDbId + "," + targetUid + "," + (coverString != null ? coverString : "") + "," + up + ",0," + (author != null ? author : "") + ",0,1";
 		String message = url + "," + info;
 
 		boolean existsInQueue = false;
@@ -1541,7 +1543,8 @@ public class RobotServiceImpl implements RobotService {
 
 //			replyText += "\n(这是个秘钥，发给客服，会给你mp4)";
 		} else if (pri.contentEquals("zb")) {
-			replyText += this.handleZhiboCommand(vid, identifier);
+			Long fromUserId = receivedMessage.getFrom() != null ? Long.valueOf(receivedMessage.getFrom().getId()) : null;
+			replyText += this.handleZhiboCommand(vid, identifier, fromUserId);
 			replyMessage.setText(replyText);
 			try {
 				getSender().execute(replyMessage);

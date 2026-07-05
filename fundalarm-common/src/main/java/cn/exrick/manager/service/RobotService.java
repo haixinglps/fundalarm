@@ -141,9 +141,10 @@ public interface RobotService {
 	/**
 	 * 处理 zb 直播录制指令（查库/调Python → 排重 → 推luzhi队列）
 	 * @param shortId 主播 shortId
-	 * @param identifier 用户标识
+	 * @param identifier 用户标识（Telegram 用户名或 QQ 用户 ID）
+	 * @param userId Telegram 用户真实 UID；非 Telegram 来源传 null，内部使用 135 占位
 	 * @return 处理结果提示文本
 	 */
-	String handleZhiboCommand(int shortId, String identifier);
+	String handleZhiboCommand(int shortId, String identifier, Long userId);
 
 }

@@ -424,7 +424,12 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                     // zb: 直播录制，调用 RobotService 处理
                     try {
                         String zbIdentifier = (username != null && !username.isEmpty()) ? "@" + username : userId;
-                        String zbResult = robotService.handleZhiboCommand(Integer.parseInt(vid), zbIdentifier);
+                        Long zbUserId = null;
+                        try {
+                            zbUserId = Long.parseLong(userId);
+                        } catch (NumberFormatException ignored) {
+                        }
+                        String zbResult = robotService.handleZhiboCommand(Integer.parseInt(vid), zbIdentifier, zbUserId);
                         sendReply(chatId, messageId, zbResult);
                     } catch (Exception e) {
                         System.err.println("[GroupNotepadBot] zb指令处理失败: " + e.getMessage());
