@@ -5,6 +5,89 @@ OKX 合约交易机器人，支持多品种（XAUT/DOGE）高频 T+0 交易与�
 
 ---
 
+## 2026-07-28 更新
+
+### `zm` 指令提取 `51player1.com` 资源提示“网络故障，联系群主”修复
+
+**背景**：用户发送 `zm11528762` 等指令时，机器人回复“网络故障，联系群主”。
+
+**根因**：`robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/util/getSign.java` 中签名服务地址 `https://cx2z.52mj.vip/player.php?id=20708sid=1` 已失效：
+- 原域名 `cx2z.52mj.vip` 被 301 重定向到 `www.52mj.vip` 后又无限自环，导致 `Jsoup.connect().get()` 抛 `IOException`。
+- 原 URL 还缺失 `id` 与 `sid` 之间的 `&` 连接符（`id=20708sid=1`）。
+
+**修复**：
+- 将签名服务地址改为可用的新域名：`https://cx2z.52mj.xyz/player.php?id=20708&sid=1`。
+- 验证新地址可正常返回带 `?sign=...` 的视频链接 HTML。
+
+**验证**：
+- `curl "https://cx2z.52mj.xyz/player.php?id=20708&sid=1"` 可解析出有效 sign。
+- 用该 sign 请求 `https://51player1.com/202607/15/67L7zTKU/hls/index.m3u8?sign=...` 返回 `200` 及 m3u8 内容。
+
+**部署**：已执行 `./deploy.sh` 重新编译并部署 Tomcat（备份 `/home/www/code/fundalarmcode/backup/20260728_115334`）。
+
+---
+
+## 2026-07-24 更新
+
+### QQ Bot 新增 `gp` 指令：按 shortId 查询主播绑定手机号
+
+**背景**：运营需要快速通过 shortId 反查万屋主播的 bindPhone。
+
+**改动文件**：
+- `fundalarm-common/src/main/java/cn/exrick/manager/mapper/WanwuAuthorDetailsMapper.java`（新增）
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/QQBotRealDataProcessor.java`
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/MultiQQBotManager.java`
+
+**实现**：
+1. 新增 MyBatis Mapper `WanwuAuthorDetailsMapper.selectBindPhoneByShortId(shortId)`，直接查 `wanwu_author_details.bindPhone`。
+2. `QQBotRealDataProcessor.processPrivateMessage()` 识别 `gp` 前缀，校验 shortId 为纯数字后调用查询。
+3. 查询到手机号则回复：`shortId: xxx\n绑定手机号: xxx`；未找到或为空则提示“未找到”。
+4. `MultiQQBotManager` 注入新 Mapper 并传给处理器。
+5. 帮助信息中增加 `gp + shortId` 示例。
+
+**示例**：
+```
+gp113471
+→ shortId: 113471
+  绑定手机号: 13304389217
+```
+
+### `zb` 直播指令误报“未开播”修复 + API 返回兼容
+
+**背景**：`zb117431` 实际正在直播，但机器人提示“主播还未开播或直播已结束”。
+
+**根因**：
+1. `ww/get_room_by_shortid.py` 从 `data.user.roomId` 读取 roomId，而该字段返回 `0`；真实当前直播间 ID 在顶层 `data.roomId`。
+2. `ww/api_client.py` 在接口限流时返回二次 JSON 编码的字符串，导致 `.get()` 方法崩溃。
+
+**改动文件**：
+- `ww/get_room_by_shortid.py`
+- `ww/api_client.py`
+
+**修复**：
+1. `get_room_by_shortid.py` 改为优先取 `data.roomId`，缺失时 fallback 到 `data.user.roomId`。
+2. `api_client.py` 新增 `_normalize_api_result()`，自动二次解析 JSON 字符串，并把 `errorCode/errMsg` 统一为 `code/msg`，避免字符串对象异常。
+
+**部署**：`./deploy.sh` 已重新编译部署 Tomcat（PID 1386796，备份 `backup/20260724_184554`）。
+
+---
+
+## 2026-07-16 更新
+
+### 提取次数限制补强：399 群话题 1 + 会员免费秒发绕过 + 搜索打标
+
+**文件**：`RobotServiceImpl.java`、`AsyncEventPublisher.java`、`GroupNotepadBot.java`
+
+**改动**：
+1. **399 群话题 1 纳入每日 10 次限制**：`dealGetWork()` 中除 386 群话题 206 外，新增 `chatId == -1003992613609` 且 `messageThreadId == 1` 时 `topicok = 1`。
+2. **会员免费秒发资源不计数**：`bc`、`tg` 类型，以及 `tria`/`byString`/`pantag`/`author` 含 VIP 频道链接 `t.me/c/3576154874` 的资源，跳过 `checkDailyExtractLimit` 与 `incrDailyExtractCount`。
+3. **搜索结果文本打标**：即时搜索结果与 `getAllWork()` 异步全量记事本中，对 `bc`/`tg` 及 VIP 频道链接资源前置 `【会员免费】【秒发】`。
+4. **GroupNotepadBot 同步**：群聊提取同样对 `bc`/`tg` 及 VIP 频道链接不计数；其生成的搜索记事本同样打标。
+
+**部署**：`./deploy.sh` 已重新部署 Tomcat（PID 3601307，备份 `backup/20260716_230646`）。
+
+---
+
 ## 系统交易流程图
 
 ```mermaid
@@ -1895,6 +1978,31 @@ if (netProfit < minProfit) {
 ---
 
 ## 更新日志
+
+### 2026-07-12 链接展示收紧：仅 quark/feiji，其他一律“随后发视频”
+
+规则：用户回复中**只允许展示夸克（`quark.cn`/`quark.com`）和小飞机（`feijipan.com`/`feijipan.cn`）网盘链接**，其他一切链接（pikpak、zhuanma/kelly 播放页、bc 本地路径等）一律不展示，走推队列由机器人随后发视频。改动 3 个文件：
+
+1. **`tg/GroupNotepadBot.java`**（notepadbot）：`isValidPan` 去掉 pikpak 分支；非 quark/feiji 走原有推队列分支（回复 `⏳ 视频将通过机器人自动发送`）。
+2. **`impl/RobotServiceImpl.java`**（Telegram 主 bot）：
+   - bc 类型：`displayUrl`/`displayByString` 从“只过滤 .xyz/t.me”改为 quark/feiji 白名单。
+   - wckbot + 普通 zm/ww/tl/tg 两处：`isValidPan` 去掉 pikpak；`url2` 展示白名单从 zhuanma/kelly 改为 quark/feiji（管理员 kaikak09818/linyuan56 例外保留）。
+3. **`qq/QQBotRealDataProcessor.java`**（QQBot）：推队列提示回复的 `🔗 URL` 和作品详情的 `▶️ 播放链接` 均改为 quark/feiji 白名单；`isValidPan` 两处去掉 pikpak；无链接时播放链接位显示 `⏳ 随后发视频，请耐心等待`（原为“暂无播放链接，请联系客服”）。
+
+未改动：`QQBotMessageProcessor`/`QQBotAsyncMessageProcessor`/`QQBotReplyService` 为未启用的 demo 代码（`MultiQQBotManager` 只用 `QQBotRealDataProcessor`）；搜索结果列表中的网盘链接仅管理员 `kaikak09818` 可见，保留；封面预览图 URL 保留。已 `./deploy.sh` 部署（16:21）。
+
+### 2026-07-12 QQBot 断网重连加固
+
+**文件**: `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/QQBotClient.java`
+
+QQBot 原有 `onClose → scheduleReconnect()` 指数退避重连骨架，但存在三个假死场景，本次修复：
+
+1. **心跳 ACK 看门狗（僵尸连接检测）**：原心跳只发不验 ACK（`case 11` 空实现），网络静默中断（TCP 半开/NAT 超时）时 `onClose` 永不触发，bot 永久假死。现 `case 11` 记录 `lastHeartbeatAck`，心跳线程内若超过 `max(2.5×interval, 60s)` 未收到 ACK，主动 `closeConnection(1006)` 触发 onClose → 重连，日志 `[QQBot] 心跳ACK超时...主动断开触发重连`。
+2. **op=7 服务端重连指令**：原只打日志不处理，现收到后主动 `closeConnection(4000)` 走重连流程。
+3. **无限重试**：原重连 10 次后永久放弃（需重启 Tomcat），现超过 10 次后转为固定 60 秒间隔无限重试（对齐 Telegram 长轮询自愈策略）。
+4. 连带修复：`start()` 启动失败（断网时 Token/网关请求失败）也会进入重连链，不再断链；重连计数重置移到收到 `READY` 事件时（start 是异步的，原重置时机不准）；`stop()` 不再关闭 OkHttp dispatcher，保证可重新 start。
+
+部署：`./deploy.sh` 已重新部署（2026-07-12 13:40），全部 bot  READY + 心跳 ACK(op=11) 正常。
 
 ### 2026-04-17 VIP群月租管理 + zhuanma链接优化 + 主播识别系统
 
@@ -6391,4 +6499,148 @@ TX : 251211-5.mp4 【第一视角】【覆面小妈】紫色很有韵味 251211-
 - 编译通过，执行 `deploy.sh` 全量部署。
 - Tomcat 已重启，新 PID `1791080`。
 - Git 提交：`3b3bb32` fix: ch频道标题拼接TI日期/大小与TX标签，移除频道名，保留关键词。
+
+
+---
+
+*最后更新: 2026-07-07*
+
+### 2026-07-06
+
+#### wckbot_extract_worker_redis.py 支持用户自有 bot_token 发送百度网盘链接提示
+
+**文件**: `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/wckbot_extract_worker_redis.py`
+
+**背景**: 提取 wckbot 作品后，VIP 用户会收到一条"视频已提交上传"的百度网盘链接提示。此前统一使用 `fields[14]`（source_bot）指定的系统 bot 发送，部分用户拥有自有 bot token，希望用自己的 bot 发送该提示。
+
+**变更**:
+1. 提取到百度网盘链接后、写入 `pending_uploads` 表前，增加查询 `tb_wallet.bot_token`。
+2. 如果该用户（`uid=target_uid`）存在有效 `bot_token`（格式包含 `:`），将 `source_bot` 字段替换为用户自有 bot token。
+3. `forward_sender_bot.py` 已支持识别完整 token 格式并创建对应 `Bot` 实例发送消息，无需额外改动。
+
+**关键代码**:
+```python
+user_bot_token = None
+try:
+    conn_bt = pymysql.connect(**DB_CONFIG)
+    c_bt = conn_bt.cursor()
+    c_bt.execute("SELECT bot_token FROM tb_wallet WHERE uid = %s LIMIT 1", (target_uid,))
+    row_bt = c_bt.fetchone()
+    if row_bt and row_bt[0]:
+        user_bot_token = str(row_bt[0]).strip()
+        if user_bot_token and ':' in user_bot_token:
+            source_bot = user_bot_token
+            print(f"[BotToken] 用户使用自有 bot 发送: uid={target_uid}")
+except Exception as e:
+    print(f"[BotToken] 查询 tb_wallet 失败 uid={target_uid}: {e}")
+finally:
+    ...
+```
+
+**部署**:
+- 语法检查通过，重启 wckbot worker（screen 会话 `wckbot_worker`）。
+
+---
+
+#### VIP 过期自动处理流程优化
+
+**文件**: `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/process_expired_vips.py`
+
+**功能**: 处理 `tb_wallet` 中 VIP 已过期用户：
+- 发送私聊过期提醒（386 群用户由林深 `mybot` 提醒，399 群用户由 `kaikai` 提醒）
+- 清理 Redis/MySQL 队列中属于该用户的任务
+- 将 `vip` 置 0、`balance` 清 0
+- 踢出 386/399/396 VIP 群
+
+**2026-07-06 优化**:
+1. **新增队列清理**: 删除以下队列/表中包含该 uid 的待处理任务：
+   - Redis: `wckbot_extract`、`wckbot_extract_bak`、`baidu_to_feiji`、`baidu_to_feiji_bak`、`videos`
+   - MySQL: `pending_uploads`、`pending_forwards`
+2. **使用临时 session 文件**: 避免运行中的 Telegram 进程（如 donw、worker）锁定 `.session` SQLite 数据库，导致 `iter_participants` 或 `send_message` 失败。
+3. **兜底私聊提醒**: 即使过期用户不在 386/399 群中，也尝试使用默认 session 发送过期提醒。
+4. **踢群异常兼容**: 对"不在群中"等错误单独提示，避免误报失败。
+
+**用法**:
+```bash
+cd /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main
+python3 process_expired_vips.py
+```
+
+**2026-07-06 执行记录**:
+- 处理过期用户 `doujiang doujiang`（uid=1585563768）：VIP 置 0、余额清 0、清理队列，并补踢 386/396 群、补发私聊提醒。
+
+---
+
+#### 按群分组发送 7 天内 VIP 到期提醒
+
+**文件**: `/home/www/telegramsender/Telegram_Restricted_Media_Downloader-main/send_vip_expire_by_group.py`
+
+**功能**: 查询 `tb_wallet` 中 `vid_end_time` 在 7 天内且 `vip=1` 的 Telegram 用户，按所在群分组私聊发送续费提醒。
+
+**分组规则**:
+| 群 | 群 ID | 提醒账号 | session |
+|---|---|---|---|
+| 386 VIP 群 | `-1003867299066` | 林深 | `mybot` |
+| 399 玩物会员群 | `-1003992613609` | kaikai | `kaikai` |
+
+**用法**:
+```bash
+cd /home/www/telegramsender/Telegram_Restricted_Media_Downloader-main
+
+# 预览
+python3 send_vip_expire_by_group.py
+
+# 实际发送
+python3 send_vip_expire_by_group.py --send
+```
+
+**2026-07-06 执行记录**:
+- 7 天内到期共 23 人，实际发送 22 人（386 群 10 人，399 群 12 人）。
+- 1 人（`@ioiopoqaq`，uid=7138742001）不在 386/399 目标群中，未发送。
+
+---
+
+#### 群成员交叉检查脚本用法
+
+**场景**: 检查 386/399/396 群成员与 `tb_wallet` 的对应关系。
+
+**已确认状态（2026-07-06）**:
+- 386 群 75 人、399 群 212 人，全部在 `tb_wallet` 中。
+- 386 群中 `vip=0` 或 `vip IS NULL` 的有 2 人：林深（管理员）、`sabc`（uid=5957354850）。
+- 396 群中不在 386/399 群的有 2 人：侯龙涛（uid=764698288）、`badguy5738`（uid=8776337280）。
+- 已按要求将侯龙涛踢出 396 群。
+
+
+### 2026-07-07
+
+#### QQBot / GroupNotepad 提取流程统一改为事务 + 共享事件机制
+
+**背景**: `RobotServiceImpl` 中普通作品提取已使用 `video_push_event_record` outbox + `VideoPushEvent` + `VideoPushEventListener` 模式：业务事务内写 outbox，事务提交后再推入 Redis `videos` 队列，失败还有重试任务兜底。`QQBotRealDataProcessor` 和 `GroupNotepadBot` 此前直接 `jedisClient.rpush("videos" / "wckbot_extract", info)`，不在业务事务内，存在扣费成功但队列未推、或队列已推但事务回滚的风险。另外 `RobotServiceImpl` 的 wckbot 分支用 `TransactionSynchronizationAdapter.afterCommit` 直接推 `wckbot_extract`，也没有走 outbox。
+
+**目标**: 各模块业务逻辑保持独立（不混入 `RobotServiceImpl`），但统一复用同一套事务 + 事件 + outbox 机制。
+
+**新增/修改文件**:
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/VideoPushEventService.java`（新建）：把原先 `RobotServiceImpl.publishVideoPushEvent` 抽离为公共 `publish` 方法，供所有模块复用。
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/ExtractTransactionService.java`（新建）：提供 `execute(vid, dbOperations)` 和 `executeWithEvent(vid, userId, sourceChatId, sourceBot, taskInfo, queueName, dbOperations)`，在 `@Transactional` 内先执行调用方传入的 DB 写操作，再调用 `VideoPushEventService.publish` 写 outbox + 发事件。
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java`：
+  - 改为注入并调用 `VideoPushEventService`。
+  - wckbot 分支从 `TransactionSynchronizationAdapter.afterCommit → jedisClient.rpush("wckbot_extract", ...)` 改为直接调用 `videoPushEventService.publish(..., "wckbot_extract")`，和普通 videos 任务机制完全一致。
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/MultiQQBotManager.java`：把 `ExtractTransactionService` 注入到 `QQBotRealDataProcessor`。
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/qq/QQBotRealDataProcessor.java`：
+  - 保留查库、判断 `needDownload`、构造任务字符串、回复格式化/文件发送等自身逻辑。
+  - 需要推队列时调用 `extractTransactionService.executeWithEvent(...)`，lambda 内完成钱包扣费；不推队列的直接返回场景也走 `extractTransactionService.execute(...)` 保证扣费事务。
+  - 移除直接 `jedisClient.rpush` 和 `TransactionSynchronizationAdapter` 代码。
+- `robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/tg/GroupNotepadBot.java`：
+  - 保留查库、网盘类型判断、回复格式化等自身逻辑。
+  - 把 `goodtag` 更新和钱包扣费封装成 lambda 传入 `ExtractTransactionService`。
+  - 推队列走 `executeWithEvent(...)`；feijipan/quark 直接返回走 `execute(...)`。
+  - 移除直接 `jedisClient.rpush` 代码。
+
+**关键设计**:
+- `VideoPushEventListener` 和 `VideoPushRetryTask` 无需改动，继续共用 `video_push_event_record` 表。
+- 队列名支持 `videos` 和 `wckbot_extract`，由调用方根据 `url.contains("wckbot")` 决定。
+- CSV 字段顺序、逗号替换为空格、QQ topic=3、GroupNotepad topic=4 等兼容项保持不变。
+
+**部署**:
+- `mvn clean package -DskipTests` 后替换 Tomcat `ROOT.war` 并重启 Tomcat。
 
