@@ -14,8 +14,15 @@ public class getSign {
 //	  </video>
 		Document doc = Jsoup.connect(urlString).get();
 		String html = doc.outerHtml();
+		// 兼容新旧两种格式：旧格式 ?sign=  / 新格式 "sign=
 		int beginindex = html.indexOf("?sign=");
+		if (beginindex == -1) {
+			beginindex = html.indexOf("\"sign=");
+		}
 		int endindex = html.indexOf("//视频链接");
+		if (endindex == -1) {
+			endindex = html.length();
+		}
 //		System.out.println(html);
 		String videostr = html.substring(beginindex, endindex);
 		int signindex = videostr.indexOf("sign=");
