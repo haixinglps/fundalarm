@@ -88,6 +88,9 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
     @Autowired
     private TbWalletMapper tbWalletMapper;
     
+    @Autowired
+    private cn.exrick.manager.service.impl.ExtractTransactionService extractTransactionService;
+    
     // 新用户默认余额
     private static final int DEFAULT_BALANCE = 5;
     // 提取作品扣费金额
@@ -221,7 +224,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
             return;
         }
         
-        // 1. 先查询作品获取 byString
+        // 1. 先查询作品获取 byString；goodtag 更新延迟到事务内执行
         String title = null;
         String url = null;
         String cover = null;
@@ -230,6 +233,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         String wpString = null;
         int zhindex = 0;
         boolean found = false;
+        Runnable goodtagOperation = null;
         
         try {
             switch (prefix) {
@@ -258,10 +262,13 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         } else {
                             System.out.println("[GroupNotepadBot] WW类型无网盘链接，推队列下载: url=" + url);
                         }
-                        // 参考 RobotServiceImpl: 更新 goodtag
-                        WanwuVideo wwRecord = new WanwuVideo();
-                        wwRecord.setGoodtag(1);
-                        wanwuVideoMapper.updateByExampleSelective(wwRecord, wwExample);
+                        // 参考 RobotServiceImpl: 更新 goodtag（延迟到事务内执行）
+                        final WanwuVideoExample capturedWwExample = wwExample;
+                        goodtagOperation = () -> {
+                            WanwuVideo wwRecord = new WanwuVideo();
+                            wwRecord.setGoodtag(1);
+                            wanwuVideoMapper.updateByExampleSelective(wwRecord, capturedWwExample);
+                        };
                     }
                     break;
                 case "zm":
@@ -290,10 +297,13 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                             // 不是有效网盘，推队列下载（url 仍使用 getUrl()）
                             System.out.println("[GroupNotepadBot] ZM类型无网盘链接，推队列下载: url=" + url);
                         }
-                        // 参考 RobotServiceImpl: 更新 goodtag
-                        ZmqVideo zmRecord = new ZmqVideo();
-                        zmRecord.setGoodtag(1);
-                        zmqVideoMapper.updateByExampleSelective(zmRecord, zmExample);
+                        // 参考 RobotServiceImpl: 更新 goodtag（延迟到事务内执行）
+                        final ZmqVideoExample capturedZmExample = zmExample;
+                        goodtagOperation = () -> {
+                            ZmqVideo zmRecord = new ZmqVideo();
+                            zmRecord.setGoodtag(1);
+                            zmqVideoMapper.updateByExampleSelective(zmRecord, capturedZmExample);
+                        };
                     }
                     break;
                 case "tl":
@@ -321,10 +331,13 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         } else {
                             System.out.println("[GroupNotepadBot] TL类型无网盘链接，推队列下载: url=" + url);
                         }
-                        // 参考 RobotServiceImpl: 更新 goodtag
-                        Taolu3Video tlRecord = new Taolu3Video();
-                        tlRecord.setGoodtag(1);
-                        taolu3VideoMapper.updateByExampleSelective(tlRecord, tlExample);
+                        // 参考 RobotServiceImpl: 更新 goodtag（延迟到事务内执行）
+                        final Taolu3VideoExample capturedTlExample = tlExample;
+                        goodtagOperation = () -> {
+                            Taolu3Video tlRecord = new Taolu3Video();
+                            tlRecord.setGoodtag(1);
+                            taolu3VideoMapper.updateByExampleSelective(tlRecord, capturedTlExample);
+                        };
                     }
                     break;
                 case "bc":
@@ -345,9 +358,12 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         zhindex = 0;
                         // 标记为 bc 类型，不直接展示网盘链接给用户
                         System.out.println("[GroupNotepadBot] 找到作品: " + title + ", url=" + url + " (bc类型，不展示链接，推队列)");
-                        // 参考 RobotServiceImpl: 更新 goodtag
-                        bcVideo.setGoodtag(1);
-                        waiwang2VideoMapper.updateByPrimaryKeySelective(bcVideo);
+                        // 参考 RobotServiceImpl: 更新 goodtag（延迟到事务内执行）
+                        final Waiwang2Video capturedBcVideo = bcVideo;
+                        goodtagOperation = () -> {
+                            capturedBcVideo.setGoodtag(1);
+                            waiwang2VideoMapper.updateByPrimaryKeySelective(capturedBcVideo);
+                        };
                     } else {
                         System.out.println("[GroupNotepadBot] 未找到作品: bc" + vid);
                     }
@@ -374,9 +390,12 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         byString = tgVideo.getAuthor();
                         wpString = "";
                         zhindex = tgVideo.getFriendindex();
-                        // 参考 RobotServiceImpl: 更新 goodtag
-                        tgVideo.setGoodtag(1);
-                        waiwangVideoMapper.updateByPrimaryKeySelective(tgVideo);
+                        // 参考 RobotServiceImpl: 更新 goodtag（延迟到事务内执行）
+                        final WaiwangVideo capturedTgVideo = tgVideo;
+                        goodtagOperation = () -> {
+                            capturedTgVideo.setGoodtag(1);
+                            waiwangVideoMapper.updateByPrimaryKeySelective(capturedTgVideo);
+                        };
                         System.out.println("[GroupNotepadBot] 找到作品: " + title + ", url=" + url + ", byString=" + byString + " (电报资源)");
                     } else {
                         System.out.println("[GroupNotepadBot] 未找到作品: " + prefix + vid);
@@ -447,7 +466,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
             return;
         }
         
-        // 2. 检查余额（查询到作品后检查）- 仅私聊检测，群聊免费
+        // 2. 预检余额并获取钱包用于显示（查询到作品后检查）- 仅私聊检测，群聊免费
         TbWallet wallet = getOrCreateWallet(userId, username, firstName);
         if (isPrivate) {
             // 私聊：检测余额
@@ -461,28 +480,40 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         }
         int balanceBefore = wallet.getBalance() != null ? wallet.getBalance() : 0;
         int balanceAfter = balanceBefore;
-        if (isPrivate) {
-            // 私聊：原子扣费，防止并发 Lost Update
-            int deductRows = tbWalletMapper.deductBalance(userId);
-            if (deductRows == 0) {
-                sendReply(chatId, messageId, "❌ 余额不足\n" +
-                    "当前余额: " + balanceBefore + "\n" +
-                    "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
-                    "请联系客服充值");
-                return;
+        
+        // 构建扣费 + goodtag 更新 lambda，在事务内执行
+        final Runnable capturedGoodtagOperation = goodtagOperation;
+        final boolean finalIsPrivate = isPrivate;
+        Runnable dbOperations = () -> {
+            if (capturedGoodtagOperation != null) {
+                capturedGoodtagOperation.run();
             }
-            balanceAfter = balanceBefore - DEDUCT_AMOUNT;
-            wallet.setBalance(balanceAfter);
-            System.out.println("[GroupNotepadBot] 扣费成功: user=" + userId + ", topic=" + TG_TOPIC_TYPE + 
-                ", 扣费前=" + balanceBefore + ", 扣费后=" + balanceAfter + ", 扣费=" + DEDUCT_AMOUNT);
-        } else {
-            // 群聊：不扣费
-            System.out.println("[GroupNotepadBot] 群聊免费提取: user=" + userId + ", 余额=" + balanceBefore);
-        }
+            TbWallet txWallet = getOrCreateWallet(userId, username, firstName);
+            if (finalIsPrivate) {
+                // 私聊：原子扣费，防止并发 Lost Update
+                int deductRows = tbWalletMapper.deductBalance(userId);
+                if (deductRows == 0) {
+                    throw new RuntimeException("余额不足");
+                }
+                int txBalance = txWallet.getBalance() != null ? txWallet.getBalance() : 0;
+                txWallet.setBalance(txBalance - DEDUCT_AMOUNT);
+                System.out.println("[GroupNotepadBot] 事务内扣费成功: user=" + userId + ", topic=" + TG_TOPIC_TYPE +
+                    ", 扣费后=" + txWallet.getBalance() + ", 扣费=" + DEDUCT_AMOUNT);
+            } else {
+                // 群聊：不扣费
+                System.out.println("[GroupNotepadBot] 群聊免费提取: user=" + userId + ", 余额=" + txWallet.getBalance());
+            }
+        };
         
         System.out.println("[GroupNotepadBot] 准备构建回复, url=" + url + ", byString=" + byString + ", zhindex=" + zhindex + ", prefix=" + prefix);
         
         StringBuilder reply = new StringBuilder();
+        // 2026-09-22 冷门资源前缀：wckbot 且 tria=sk 时标题加前缀（与 RobotServiceImpl 保持一致，同时进队列任务标题）
+        boolean isWckbotSk = "zm".equals(prefix) && url != null && url.contains("wckbot")
+                && byString != null && byString.equals("sk");
+        if (isWckbotSk) {
+            title = "【冷门资源，3元一个，私聊机器人提取】" + title;
+        }
         reply.append("📹 作品提取成功\n");
         reply.append("==============================\n");
         reply.append("来源: ").append(prefix.toUpperCase()).append("\n");
@@ -493,18 +524,18 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         }
         reply.append("------------------------------\n");
         
-        // 网盘判断：feijipan/quark/pikpak 展示分享链接；feijipan/quark 不推队列，pikpak/其他推队列
+        // 网盘判断：仅 feijipan/quark 展示分享链接且不推队列；其他（pikpak等）一律不展示，推队列随后发视频
         boolean isFeijipan = byString != null && (byString.contains("feijipan.com") || byString.contains("feijipan.cn"));
         boolean isQuark = byString != null && (byString.contains("quark.cn") || byString.contains("quark.com"));
         boolean isPikpak = byString != null && byString.contains("pikpak");
-        boolean isValidPan = isFeijipan || isQuark || isPikpak;
+        boolean isValidPan = isFeijipan || isQuark;
         
         System.out.println("[GroupNotepadBot] 网盘判断: isFeijipan=" + isFeijipan + ", isQuark=" + isQuark + ", isPikpak=" + isPikpak + ", byString=" + byString);
         
         // 管理员判断
         boolean isAdmin = "kaikak09818".equals(username) || "linyuan56".equals(username);
         
-        // 展示网盘分享链接（feijipan/quark/pikpak）
+        // 展示网盘分享链接（仅 feijipan/quark，其他一律不展示，随后发视频）
         if (isValidPan) {
             System.out.println("[GroupNotepadBot] 有网盘分享链接，展示给用户: " + byString);
             reply.append("☁️ 网盘链接:\n").append(byString).append("\n");
@@ -513,13 +544,29 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         // feijipan/quark 直接返回，不推队列；pikpak/其他推队列
         if (isFeijipan || isQuark) {
             System.out.println("[GroupNotepadBot] 有小飞机/夸克网盘链接，直接返回不推队列");
+            // 仍需事务内更新 goodtag 和（私聊）扣费
+            try {
+                if (extractTransactionService != null) {
+                    extractTransactionService.execute(vid, dbOperations);
+                } else {
+                    dbOperations.run();
+                }
+                if (isPrivate) {
+                    balanceAfter = balanceBefore - DEDUCT_AMOUNT;
+                    wallet.setBalance(balanceAfter);
+                }
+            } catch (Exception e) {
+                handleExtractException(chatId, messageId, e, balanceBefore);
+                return;
+            }
         } else {
             // pikpak/其他推队列
             System.out.println("[GroupNotepadBot] 非小飞机/夸克网盘链接(byString=" + byString + ")，推队列");
             
-            // 每日提取次数限制：topicok=4 每日限10次
-            if (!checkDailyExtractLimit(userId, 4)) {
-                reply.append("⚠️ 今日提取次数已达上限（5次），请明日再试。\n");
+            // 每日提取次数限制：群聊每日限10次，私聊扣余额不受限
+            // bc/tg 类型及 VIP 频道缓存链接不限制次数
+            if (!isPrivate && !checkDailyExtractLimit(userId, 4, prefix, byString)) {
+                reply.append("⚠️ 今日群聊提取次数已达上限（30次），请明日再试。\n");
             } else {
                 reply.append("⏳ 视频将通过机器人自动发送\n");
                 // 禁止展示 URL、网盘链接、电报链接（推队列即可）
@@ -534,13 +581,36 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 String info = safeDisplayName + "," + safeUrl + "," + safeTitle + "," + cmd + "," + chatId + ","
                         + safeCover + "," + safeByString + "," + safeWpString + "," + safeAuthor + "," + zhindex + ",4," + userId + "," + messageId + "," + (messageThreadId != null ? messageThreadId : "") + ",1" + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
                 System.out.println("[GroupNotepadBot] 队列信息: " + info);
-                boolean isWckbot = safeUrl.contains("wckbot");
+                // 与 RobotServiceImpl 保持一致：仅 zm 指令且 url 含 wckbot 时走 wckbot_extract 队列
+                boolean isWckbot = "zm".equals(prefix) && safeUrl.contains("wckbot");
+                // 2026-09-22 冷门资源群内禁止提取：本 bot 场景即群聊，wckbot 任务一律不推队列，提示私聊提取
                 if (isWckbot) {
-                    jedisClient.rpush("wckbot_extract", info);
-                    System.out.println("[GroupNotepadBot] 已推送到 wckbot_extract 队列(vipok=4): " + cmd);
-                } else {
-                    jedisClient.rpush("videos", info);
-                    System.out.println("[GroupNotepadBot] 已推送到队列(vipok=4): " + cmd);
+                    sendReply(chatId, messageId, "冷门资源不能在群里提取，请私聊机器人提取");
+                    return;
+                }
+                String queueName = "videos";
+                
+                try {
+                    if (extractTransactionService == null) {
+                        System.err.println("[GroupNotepadBot] ExtractTransactionService 未注入，无法事务推队列");
+                        sendReply(chatId, messageId, "❌ 服务配置异常，请联系客服");
+                        return;
+                    }
+                    // 事务内：goodtag 更新 + 扣费 + 写 outbox + 发布事件；事务提交后监听器推 Redis
+                    extractTransactionService.executeWithEvent(vid, userId, chatId, "1",
+                            info, queueName, dbOperations);
+                    if (isPrivate) {
+                        balanceAfter = balanceBefore - DEDUCT_AMOUNT;
+                        wallet.setBalance(balanceAfter);
+                    }
+                    System.out.println("[GroupNotepadBot] 已写入视频推送 outbox，事务提交后推入" + queueName + "队列: " + cmd);
+                    // 群聊提取成功，递增每日计数（bc/tg 及 VIP 频道缓存链接不计数）
+                    if (!isPrivate) {
+                        incrDailyExtractCount(userId, 4, prefix, byString);
+                    }
+                } catch (Exception e) {
+                    handleExtractException(chatId, messageId, e, balanceBefore);
+                    return;
                 }
             }
         }
@@ -565,6 +635,23 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         System.out.println("[GroupNotepadBot] 准备发送回复, chatId=" + chatId + ", reply长度=" + reply.length());
         sendReply(chatId, messageId, reply.toString());
         System.out.println("[GroupNotepadBot] 回复发送完成");
+    }
+    
+    /**
+     * 提取事务异常统一处理
+     */
+    private void handleExtractException(Long chatId, Integer messageId, Exception e, int balanceBefore) {
+        String msg = e.getMessage();
+        if (msg != null && msg.contains("余额不足")) {
+            sendReply(chatId, messageId, "❌ 余额不足\n" +
+                "当前余额: " + balanceBefore + "\n" +
+                "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
+                "请联系客服充值");
+        } else {
+            System.err.println("[GroupNotepadBot] 提取事务失败: " + e.getMessage());
+            e.printStackTrace();
+            sendReply(chatId, messageId, "❌ 提取失败: " + e.getMessage());
+        }
     }
     
     private void handleSearchAndNotepad(Long chatId, Integer replyToMessageId, String keyword, String displayName) {
@@ -601,7 +688,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                                 String duration = hits.get(i).getArticle().getString("CC");
                                 long rq = hits.get(i).getArticle().getLong("RQ");
                                 String time = new SimpleDateFormat("yyyy-MM-dd").format(new Date(rq));
-                                results.add(new SearchResult("CH", id, title, "", duration, time));
+                                results.add(new SearchResult("CH", id, title, "", duration, time, hits.get(i).getArticle().getString("UR")));
                             }
                         }
                     }
@@ -630,7 +717,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 List<ZmqVideo> zmList = zmqVideoMapper.selectByExample(zmExample);
                 
                 for (ZmqVideo v : zmList) {
-                    results.add(new SearchResult("ZM", v.getVid(), v.getTitle(), v.getCover(), v.getDuration(), v.getDt()));
+                    results.add(new SearchResult("ZM", v.getVid(), v.getTitle(), v.getCover(), v.getDuration(), v.getDt(), v.getTria()));
                 }
             } catch (Exception e) {
                 System.err.println("[GroupNotepadBot] ZMQ搜索失败: " + e.getMessage());
@@ -653,7 +740,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 List<WanwuVideo> wwList = wanwuVideoMapper.selectByExample(wwExample);
                 
                 for (WanwuVideo v : wwList) {
-                    results.add(new SearchResult("WW", v.getVid(), v.getTitle(), v.getCover(), v.getDuration(), v.getAddtime()));
+                    results.add(new SearchResult("WW", v.getVid(), v.getTitle(), v.getCover(), v.getDuration(), v.getAddtime(), v.getTria()));
                 }
             } catch (Exception e) {
                 System.err.println("[GroupNotepadBot] WW搜索失败: " + e.getMessage());
@@ -676,7 +763,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 List<Taolu3Video> tlList = taolu3VideoMapper.selectByExample(tlExample);
                 
                 for (Taolu3Video v : tlList) {
-                    results.add(new SearchResult("TL", v.getVid(), v.getTitle(), v.getCover(), null, v.getDt()));
+                    results.add(new SearchResult("TL", v.getVid(), v.getTitle(), v.getCover(), null, v.getDt(), v.getTria()));
                 }
             } catch (Exception e) {
                 System.err.println("[GroupNotepadBot] TL搜索失败: " + e.getMessage());
@@ -707,7 +794,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                     String pantag = v.getPantag();
                     if (pantag != null && !pantag.trim().isEmpty() && 
                         (pantag.contains("http://") || pantag.contains("https://"))) {
-                        results.add(new SearchResult("BC", v.getId(), v.getTitle(), v.getCover(), v.getDuration(), v.getDt()));
+                        results.add(new SearchResult("BC", v.getId(), v.getTitle(), v.getCover(), v.getDuration(), v.getDt(), v.getPantag()));
                     } else {
                         filteredCount++;
                         System.out.println("[GroupNotepadBot] 过滤无效pantag记录: BC" + v.getId() + ", pantag=" + pantag);
@@ -732,7 +819,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
 					}
 				}
                 criteria.andTitleNotEqualTo("");
-                criteria.andDurationGreaterThan("600");
+                criteria.andDurationGreaterThan("60");
                 // 排除 friendindex = 1 的记录
                 criteria.andFriendindexNotEqualTo(1);
                 tgExample.setOrderByClause("dt desc");
@@ -742,7 +829,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 
                 for (WaiwangVideo v : tgList) {
                     // WaiwangVideo 没有 cover 字段
-                    results.add(new SearchResult("TG", v.getId(), v.getTitle(), "", secondsToHMS(v.getDuration()), v.getDt()));
+                    results.add(new SearchResult("TG", v.getId(), v.getTitle(), "", secondsToHMS(v.getDuration()), v.getDt(), v.getAuthor()));
                 }
             } catch (Exception e) {
                 System.err.println("[GroupNotepadBot] TG搜索失败: " + e.getMessage());
@@ -850,7 +937,8 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
             String timeStr = (r.time != null && !r.time.isEmpty()) ? " 时间:" + r.time : "";
             String extra = (durationStr + timeStr).trim();
             String cleanTitle = r.title.replace("\n", "").replace("\r", "");
-            writer.write(num + ". " + cleanTitle + (extra.isEmpty() ? "" : " " + extra) + "\r\n");
+            String tag = r.tag != null ? r.tag : "";
+            writer.write(num + ". " + tag + cleanTitle + (extra.isEmpty() ? "" : " " + extra) + "\r\n");
             writer.write("   指令: " + r.getCommand() + "\r\n\r\n");
             num++;
         }
@@ -971,24 +1059,49 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         String cover;
         String duration;
         String time;
+        String tag; // 会员免费秒发标记
         
         SearchResult(String type, long id, String title, String cover, String duration, String time) {
+            this(type, id, title, cover, duration, time, "");
+        }
+        
+        SearchResult(String type, long id, String title, String cover, String duration, String time, String resourceUrl) {
             this.type = type;
             this.id = id;
             this.title = title;
             this.cover = cover;
             this.duration = duration;
             this.time = time;
+            this.tag = buildTag(type, resourceUrl);
         }
         
         // 重载构造函数，兼容 Integer 类型 (ZM/WW/TL/BC/TG 等数据库类型)
         SearchResult(String type, Integer id, String title, String cover, String duration, String time) {
+            this(type, id, title, cover, duration, time, "");
+        }
+        
+        SearchResult(String type, Integer id, String title, String cover, String duration, String time, String resourceUrl) {
             this.type = type;
             this.id = id != null ? id.longValue() : null;
             this.title = title;
             this.cover = cover;
             this.duration = duration;
             this.time = time;
+            this.tag = buildTag(type, resourceUrl);
+        }
+        
+        private static String buildTag(String type, String resourceUrl) {
+            if ("BC".equals(type)) {
+                return "【会员免费】【秒发】";
+            }
+            if ("TG".equals(type)) {
+                // tg：author（resourceUrl 即 getAuthor()）有值才属于会员免费秒发，否则不打标
+                return resourceUrl != null && !resourceUrl.trim().isEmpty() ? "【会员免费】【秒发】" : "";
+            }
+            if (resourceUrl != null && (resourceUrl.contains("t.me/c/3576154874") || resourceUrl.contains("telegram.me/c/3576154874"))) {
+                return "【会员免费】【秒发】";
+            }
+            return "";
         }
         
         String getCommand() {
@@ -997,14 +1110,74 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
     }
 
     /**
+     * 判断是否为 VIP 频道缓存链接（秒发，不计入每日限制）
+     */
+    private boolean isVipChannelLink(String url) {
+        return url != null && (url.contains("t.me/c/3576154874") || url.contains("telegram.me/c/3576154874"));
+    }
+
+    /**
+     * 判断该次提取是否属于会员免费秒发资源
+     */
+    private boolean isVipFreeInstant(String pri, String byString) {
+        // bc 无条件；tg 仅当 author（byString）有值时才属于会员免费秒发
+        return "bc".equals(pri) || ("tg".equals(pri) && byString != null && !byString.trim().isEmpty()) || isVipChannelLink(byString);
+    }
+
+    /**
      * 检查每日提取次数限制
      * @param userId 用户标识
      * @param topicok 1=VIP群, 4=GroupNotepadBot
+     * @param pri 指令前缀
+     * @param byString tria/网盘/频道链接等实际资源地址
      * @return true=允许提取, false=已达上限
      */
-    private boolean checkDailyExtractLimit(String userId, int topicok) {
-        // 已解除每日提取次数限制
-        return true;
+    private boolean checkDailyExtractLimit(String userId, int topicok, String pri, String byString) {
+        if (userId == null || userId.isEmpty()) {
+            return true;
+        }
+        // bc/tg 类型及 VIP 频道缓存链接不限制次数
+        if (isVipFreeInstant(pri, byString)) {
+            return true;
+        }
+        String today = new java.text.SimpleDateFormat("yyyyMMdd").format(new java.util.Date());
+        String dailyKey = "extract:daily:tg_notepad:" + userId + ":" + today;
+        String countStr = jedisClient.get(dailyKey);
+        int count = 0;
+        if (countStr != null && !countStr.isEmpty()) {
+            try {
+                count = Integer.parseInt(countStr);
+            } catch (NumberFormatException e) {
+                count = 0;
+            }
+        }
+        return count < 30;
+    }
+
+    private void incrDailyExtractCount(String userId, int topicok, String pri, String byString) {
+        if (userId == null || userId.isEmpty()) {
+            return;
+        }
+        // bc/tg 类型及 VIP 频道缓存链接不计数
+        if (isVipFreeInstant(pri, byString)) {
+            return;
+        }
+        String today = new java.text.SimpleDateFormat("yyyyMMdd").format(new java.util.Date());
+        String dailyKey = "extract:daily:tg_notepad:" + userId + ":" + today;
+        long count = jedisClient.incr(dailyKey);
+        if (count == 1) {
+            // 第一次设置，添加当天24:00过期
+            try {
+                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd");
+                java.util.Date now = new java.util.Date();
+                java.util.Date midnight = sdf.parse(sdf.format(now));
+                midnight = new java.util.Date(midnight.getTime() + 24 * 60 * 60 * 1000);
+                long ttl = (midnight.getTime() - now.getTime()) / 1000;
+                jedisClient.expire(dailyKey, (int) ttl);
+            } catch (Exception e) {
+                jedisClient.expire(dailyKey, 86400);
+            }
+        }
     }
 
     /**

@@ -47,6 +47,7 @@ import com.zhongsou.search.core.query.Hits;
 import cn.exrick.common.exception.XmallException;
 import cn.exrick.common.jedis.JedisClient;
 import cn.exrick.manager.dto.SearchResultDTO;
+import cn.exrick.manager.event.VideoPushEvent;
 import cn.exrick.manager.isearch.Isearch;
 import cn.exrick.manager.isearch.query.Search;
 import cn.exrick.manager.isearch.query.SearchFactory;
@@ -106,6 +107,8 @@ public class RobotServiceImpl implements RobotService {
 	private String telegramBotUsername;
 	@Value("${telegram.bot2.username}")
 	private String telegramBot2Username;
+	@Value("${extract.daily.limit:1000}")
+	private int extractDailyLimit;
 	@Autowired
 	private TbDouyinGzMapper tbDouyinGzMapper;
 	@Autowired
@@ -140,6 +143,9 @@ public class RobotServiceImpl implements RobotService {
 	@Resource
 	AsyncEventPublisher publisher;
 
+	@Autowired
+	private VideoPushEventService videoPushEventService;
+
 	// 由 TelegramBotConfig 手动设置，解决循环依赖
 	public static void setCurrentBot(TelegramChannelMonitor monitor) {
 		CURRENT_BOT.set(monitor);
@@ -154,6 +160,16 @@ public class RobotServiceImpl implements RobotService {
 		String botName = current != null ? current.getBotUsername() : telegramChannelMonitor.getBotUsername();
 		System.out.println("[getSender] currentBot=" + botName + ", thread=" + Thread.currentThread().getName());
 		return current != null ? current : telegramChannelMonitor;
+	}
+
+	/**
+	 * 写入视频推送事件表并发布 Spring 事件，由监听器在业务事务提交后推入 Redis。
+	 * 注意：outbox 写入必须和业务事务同成败，所以异常直接向上抛出。
+	 * <p>
+	 * 由共用的 {@link VideoPushEventService} 实现，便于 QQ Bot、GroupNotepad 等模块复用。
+	 */
+	private void publishVideoPushEvent(String vid, String userId, Long sourceChatId, String sourceBot, String taskInfo, String queueName) {
+		videoPushEventService.publish(vid, userId, sourceChatId, sourceBot, taskInfo, queueName);
 	}
 
 	private String resolveSourceBot(Long chatId) {
@@ -415,7 +431,8 @@ public class RobotServiceImpl implements RobotService {
 				listWaiwangzmq.get(i).setCover(
 						"https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56");
 			InputMediaPhoto photo = new InputMediaPhoto(listWaiwangzmq.get(i).getCover());
-			photo.setCaption(i + "\t" + tt + "\t时长：" + listWaiwangzmq.get(i).getDuration() + "\t" + "机器人口令：zm"
+			String zmqTag = getVipFreeTag(listWaiwangzmq.get(i));
+			photo.setCaption(i + "\t" + zmqTag + tt + "\t时长：" + listWaiwangzmq.get(i).getDuration() + "\t" + "机器人口令：zm"
 					+ listWaiwangzmq.get(i).getVid() + "\t" + link); // 每张图片独立描述
 			mediaList.add(photo);
 //			if (!UrlValidator.isUrlValid(listWaiwang2.get(i).getCover())) {
@@ -479,7 +496,8 @@ public class RobotServiceImpl implements RobotService {
 				listWaiwang2.get(i).setCover(
 						"https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56");
 			InputMediaPhoto photo = new InputMediaPhoto(listWaiwang2.get(i).getCover());
-			photo.setCaption(i + "\t" + tt + "\tid:" + listWaiwang2.get(i).getUid() + "\t作者："
+			String bcTag = getVipFreeTag(listWaiwang2.get(i));
+			photo.setCaption(i + "\t" + bcTag + tt + "\tid:" + listWaiwang2.get(i).getUid() + "\t作者："
 					+ listWaiwang2.get(i).getNickname() + "\t时长：" + listWaiwang2.get(i).getDuration() + "分\t时间："
 					+ listWaiwang2.get(i).getDt() + "\t" + "机器人口令：bc" + listWaiwang2.get(i).getId() + "\t" + link); // 每张图片独立描述
 			mediaList.add(photo);
@@ -537,7 +555,8 @@ public class RobotServiceImpl implements RobotService {
 			}
 
 			InputMediaPhoto photo = new InputMediaPhoto(cover);
-			photo.setCaption(i + "\t" + cleanSearchTitle(list.get(i).getTitle()).split("_")[0] + "\tid:" + list.get(i).getAuthor()
+			String wwTag = getVipFreeTag(list.get(i));
+			photo.setCaption(i + "\t" + wwTag + cleanSearchTitle(list.get(i).getTitle()).split("_")[0] + "\tid:" + list.get(i).getAuthor()
 					+ "\t作者：" + list.get(i).getUrlkey2() + "\t时长:" + list.get(i).getDuration() + "\t时间："
 					+ list.get(i).getAddtime() + "\t" + "机器人口令：ww" + list.get(i).getVid() + "\t" + link + ""); // 每张图片独立描述
 			// photo.setParseMode("HTML");
@@ -616,7 +635,8 @@ public class RobotServiceImpl implements RobotService {
 				cover = "https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56";
 			}
 			InputMediaPhoto photo = new InputMediaPhoto(cover);
-			photo.setCaption(i + "\t" + cleanSearchTitle(listTaolu.get(i).getTitle()).split("_")[0] + "\tid:"
+			String tlTag = getVipFreeTag(listTaolu.get(i));
+			photo.setCaption(i + "\t" + tlTag + cleanSearchTitle(listTaolu.get(i).getTitle()).split("_")[0] + "\tid:"
 					+ listTaolu.get(i).getAuthor() + "\t作者：" + listTaolu.get(i).getUrlkey2() + "\t时间："
 					+ listTaolu.get(i).getDt() + "\t" + "机器人口令：tl" + listTaolu.get(i).getVid() + "\t" + link); // 每张图片独立描述
 			mediaList.add(photo);
@@ -664,7 +684,7 @@ public class RobotServiceImpl implements RobotService {
 
 		}
 		criteriaWw.andTitleNotEqualTo("");
-		criteriaWw.andDurationGreaterThan("600");
+		criteriaWw.andDurationGreaterThan("60");
 		// 排除 friendindex = 1 的记录
 		criteriaWw.andFriendindexNotEqualTo(1);
 		exampleWaiwang.setOrderByClause("dt desc");
@@ -686,11 +706,12 @@ public class RobotServiceImpl implements RobotService {
 			int sec = Integer.parseInt(duration);
 			int min = sec / 60;
 			int second = sec % 60;
-			re.append(i + "\t" + tt + "\t时间：" + listWaiwang.get(i).getDt() + "\t时长：" + min + ":" + second + "分 \t"
+			String tgTag = getVipFreeTag(listWaiwang.get(i));
+			re.append(i + "\t" + tgTag + tt + "\t时间：" + listWaiwang.get(i).getDt() + "\t时长：" + min + ":" + second + "分 \t"
 					+ "机器人口令：tg" + listWaiwang.get(i).getId() + "\t" + link + "\r\n");
 
 			InputMediaPhoto photo = new InputMediaPhoto();
-			photo.setCaption(i + "\t" + tt + "\t" + listWaiwang.get(i).getDuration() + "秒\t"
+			photo.setCaption(i + "\t" + tgTag + tt + "\t" + listWaiwang.get(i).getDuration() + "秒\t"
 					+ listWaiwang.get(i).getDt() + "\t" + "机器人口令：tg" + listWaiwang.get(i).getId() + "\t" + link); // 每张图片独立描述
 			mediaList.add(photo);
 
@@ -740,8 +761,11 @@ public class RobotServiceImpl implements RobotService {
 				String tt = ArticleUtil.buildChannelTitle(hit.getArticle());
 				long rq = hit.getArticle().getLong("RQ");
 				String dt = sdf.format(new Date(rq));
+				java.util.Map<String, Object> chMap = new java.util.HashMap<>();
+				chMap.put("url", hit.getArticle().getString("UR"));
+				String chTag = getVipFreeTagForChannel(chMap);
 
-				re.append(i + "\t" + tt + "\t时间：" + dt + "\t时长：" + hit.getArticle().getString("CC") + "分 \t"
+				re.append(i + "\t" + chTag + tt + "\t时间：" + dt + "\t时长：" + hit.getArticle().getString("CC") + "分 \t"
 						+ "机器人口令：ch" + hit.getId() + "\t" + link + "\r\n");
 
 //				InputMediaPhoto photo = new InputMediaPhoto();
@@ -868,11 +892,12 @@ public class RobotServiceImpl implements RobotService {
 		int vip = 0;
 
 		// ========== 2. 判断是否为指定群组 ==========
-		Long targetGroupId = -1003867299066L; // 替换为你的群组ID（带 -100 前缀）
+		Long targetGroupId = -1003867299066L; // 386 VIP群
+		Long targetGroupId399 = -1003992613609L; // 399群
 		int groupok = 0;
 		int topicok = 0;
 		// \u4f1a\u5458\u7fa4\uff08386\u3001399\uff09\u53ef\u4ee5\u5728\u7279\u5b9a\u8bdd\u9898\u63d0\u53d6\uff0c\u5176\u4ed6\u7fa4\u53ea\u80fd\u641c\u7d22
-		if (isGroup && !chatId.equals(-1003867299066L) && !chatId.equals(-1003992613609L)) {
+		if (isGroup && !chatId.equals(targetGroupId) && !chatId.equals(targetGroupId399)) {
 			System.out.println("\u3010\u975e\u4f1a\u5458\u7fa4\u3011chatId=" + chatId + " \u53ea\u8d70\u641c\u7d22\uff0c\u4e0d\u63d0\u53d6");
 			dealSearch(update);
 			return;
@@ -913,6 +938,12 @@ public class RobotServiceImpl implements RobotService {
 				}
 			}
 
+		} else if (chatId.equals(targetGroupId399)) {
+			// 399 群：话题1视为搜索话题；普通消息（非话题）TelegramChannelMonitor 也视为目标话题，需保持一致，走每日10次限制
+			if (messageThreadId == null || messageThreadId.intValue() == 1) {
+				System.out.println("✅ 来自399群目标话题，必须响应。");
+				topicok = 1;
+			}
 		}
 		if (groupok == 1 && topicok == 0) {
 			System.out.println("私有群其他话题不处理");
@@ -973,8 +1004,17 @@ public class RobotServiceImpl implements RobotService {
 			wallet.setNickname(identifier);
 			wallet.setUid(receivedMessage.getFrom().getId() + "");
 			wallet.setVersion(0);
-			tbWalletMapper.insertSelective(wallet);
-			wallets.add(wallet);
+			try {
+				tbWalletMapper.insertSelective(wallet);
+				wallets.add(wallet);
+			} catch (org.springframework.dao.DuplicateKeyException e) {
+				// 并发场景下其他线程已插入该 uid，重新查询即可
+				System.out.println("[dealGetWork] uid=" + wallet.getUid() + " 并发插入冲突，重新查询");
+				wallets = tbWalletMapper.selectByExample(exampleWallet);
+				if (wallets == null || wallets.size() == 0) {
+					throw e;
+				}
+			}
 
 		}
 		// 提取口令（ww/zm/tl/ch/tg/bc/zb）才检测余额；会员群（386/399）提取不扣余额
@@ -1487,10 +1527,11 @@ public class RobotServiceImpl implements RobotService {
 		}
 		title = title.replace(",", "").replace("___", "");
 
-		// 每日提取次数限制：topicok=1（VIP群成员）每日限10次
+		// 每日提取次数限制：topicok=1（386话题206 / 399话题1）每日限 extractDailyLimit 次
+		// bc/tg 类型及 VIP 频道缓存链接（秒发）不限制
 		if (topicok == 1) {
-			if (!checkDailyExtractLimit(identifier, topicok)) {
-				replyText += "\n⚠️ 今日提取次数已达上限（1000000次），请明日再试。";
+			if (!checkDailyExtractLimit(uid, topicok, pri, byString)) {
+				replyText += "\n⚠️ 今日搜索话题提取次数已达上限（" + extractDailyLimit + "次），请明日再试。";
 				replyMessage.setText(replyText);
 				try {
 					getSender().execute(replyMessage);
@@ -1503,9 +1544,14 @@ public class RobotServiceImpl implements RobotService {
 		}
 
 		if (pri.contentEquals("bc")) {
-			// .xyz / t.me 域名不直接展示 URL
-			String displayUrl = (url != null && (url.contains(".xyz") || url.contains("t.me"))) ? "" : url;
-			replyText += "为你提取到的作品链接是：\n" + title + "\n" + displayUrl + "\n本地路径：" + byString + "\n所在网盘：" + wpString;
+			// 链接展示规则：仅 feijipan/quark 网盘链接展示，其他一切链接不展示（随后发视频）
+			boolean urlIsPan = url != null && (url.contains("feijipan.com") || url.contains("feijipan.cn")
+					|| url.contains("quark.cn") || url.contains("quark.com"));
+			boolean byIsPan = byString != null && (byString.contains("feijipan.com") || byString.contains("feijipan.cn")
+					|| byString.contains("quark.cn") || byString.contains("quark.com"));
+			String displayUrl = urlIsPan ? url : "";
+			String displayByString = byIsPan ? byString : "";
+			replyText += "为你提取到的作品链接是：\n" + title + "\n" + displayUrl + "\n本地路径：" + displayByString + "\n所在网盘：" + wpString;
 			if (byString != null) {
 
 				File file = new File(byString);
@@ -1517,19 +1563,8 @@ public class RobotServiceImpl implements RobotService {
 							+ coverString;
 					String sourceBot = resolveSourceBot(chatId);
 					info = info + "," + byString + ",0," + author + "," + zhindex + "," + topicok + "," + receivedMessage.getFrom().getId() + "," + receivedMessage.getMessageId() + "," + (messageThreadId != null ? messageThreadId : "") + "," + sourceBot + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
-					final String info2 = info;
-					// 注册事务提交后的回调
-					org.springframework.transaction.support.TransactionSynchronizationManager
-							.registerSynchronization(new TransactionSynchronizationAdapter() {
-								@Override
-								public void afterCommit() {
-									// 使用异步服务发送消息
-									// 推送数据到redis队列里进行计算。
-
-//								publisher.publishEventAsync(nt.getEventContent(), transactionCode);
-									jedisClient.rpush("videos", info2);
-								}
-							});
+					// 写入 outbox 并发布事件，事务提交后由监听器推入 Redis
+					publishVideoPushEvent(receivedText, String.valueOf(receivedMessage.getFrom().getId()), chatId, sourceBot, info, "videos");
 				} else {
 					if (!byString.startsWith("http")) {
 						replyText += "\n" + "请找客服索要mp4，在网盘里,会给你一个网盘分享链接";
@@ -1560,6 +1595,29 @@ public class RobotServiceImpl implements RobotService {
 			boolean isWckbot = pri.contentEquals("zm") && url != null && url.contains("wckbot");
 
 			if (isWckbot) {
+				// 2026-09-22 冷门资源群内禁止提取：会员群（399/386/3205013648）内 wckbot 任务不 enqueue，提示私聊提取
+				if (chatId.equals(-1003992613609L) || chatId.equals(-1003867299066L) || chatId.equals(-1003205013648L)) {
+					SendMessage wckbotGroupReply = new SendMessage();
+					wckbotGroupReply.setChatId(chatId.toString());
+					wckbotGroupReply.setReplyToMessageId(receivedMessage.getMessageId());
+					// ⚠️ 关键：如果有话题ID，必须设置，否则消息会发到主频道
+					if (messageThreadId != null) {
+						wckbotGroupReply.setMessageThreadId(messageThreadId);
+					}
+					wckbotGroupReply.setText("冷门资源不能在群里提取，请私聊机器人提取");
+					try {
+						getSender().execute(wckbotGroupReply);
+						return;
+					} catch (TelegramApiException e1) {
+						e1.printStackTrace();
+						log.error("服务器异常");
+					}
+					return;
+				}
+				// 2026-09-22 冷门资源前缀：wckbot 且 tria=sk（尚未提取出真实网盘链接）时标题加前缀
+				if (byString != null && byString.equals("sk")) {
+					title = "【冷门资源，3元一个，私聊机器人提取】" + title;
+				}
 				// 推入 wckbot_extract 队列，但对外提示与普通 zm 保持一致，不暴露 wckbot 特殊处理
 				String sourceBot = resolveSourceBot(chatId);
 				// 复用原有 videos 队列的 17 字段格式，保持与 donwloadFileAndSendToUser.py / baidu_feiji_bridge.py 兼容
@@ -1569,14 +1627,8 @@ public class RobotServiceImpl implements RobotService {
 						+ (messageThreadId != null ? messageThreadId : "") + "," + sourceBot + ","
 						+ (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + ","
 						+ (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
-				final String finalWckbotTask = wckbotTask;
-				org.springframework.transaction.support.TransactionSynchronizationManager
-						.registerSynchronization(new TransactionSynchronizationAdapter() {
-							@Override
-							public void afterCommit() {
-								jedisClient.rpush("wckbot_extract", finalWckbotTask);
-							}
-						});
+				// 复用 outbox + 事件机制：事务提交后由监听器推入 wckbot_extract 队列
+				videoPushEventService.publish(receivedText, String.valueOf(receivedMessage.getFrom().getId()), chatId, sourceBot, wckbotTask, "wckbot_extract");
 
 				// 复用普通 zm 的回复样式，URL 按原规则隐藏
 				String url2 = url;
@@ -1586,18 +1638,18 @@ public class RobotServiceImpl implements RobotService {
 				boolean isAdmin = identifier != null &&
 						(identifier.contentEquals("@kaikak09818") || identifier.contentEquals("@linyuan56"));
 
-				// URL展示规则：zhuanma/kelly允许展示，其他不展示，管理员例外
+				// URL展示规则：仅 feijipan/quark 网盘链接允许展示，其他一切链接不展示，管理员例外
 				if (url2 != null && !isAdmin) {
-					if (!url2.contains("zhuanma") && !url2.contains("kelly")) {
+					if (!url2.contains("feijipan.com") && !url2.contains("feijipan.cn")
+							&& !url2.contains("quark.cn") && !url2.contains("quark.com")) {
 						url2 = "";
 					}
 				}
 
-				// 网盘链接展示规则：feijipan/quark/pikpak允许，其他不展示
+				// 网盘链接展示规则：仅 feijipan/quark 允许，其他不展示
 				boolean isValidPan = pan2 != null && (
 						pan2.contains("feijipan.com") || pan2.contains("feijipan.cn")
-						|| pan2.contains("quark.cn") || pan2.contains("quark.com")
-						|| pan2.contains("pikpak"));
+						|| pan2.contains("quark.cn") || pan2.contains("quark.com"));
 				if (!isValidPan) {
 					pan2 = "";
 				}
@@ -1613,18 +1665,18 @@ public class RobotServiceImpl implements RobotService {
 				boolean isAdmin = identifier != null &&
 						(identifier.contentEquals("@kaikak09818") || identifier.contentEquals("@linyuan56"));
 
-				// URL展示规则：zhuanma/kelly允许展示，其他不展示，管理员例外
+				// URL展示规则：仅 feijipan/quark 网盘链接允许展示，其他一切链接不展示，管理员例外
 				if (url2 != null && !isAdmin) {
-					if (!url2.contains("zhuanma") && !url2.contains("kelly")) {
+					if (!url2.contains("feijipan.com") && !url2.contains("feijipan.cn")
+							&& !url2.contains("quark.cn") && !url2.contains("quark.com")) {
 						url2 = "";
 					}
 				}
 
-				// 网盘链接展示规则：feijipan/quark/pikpak允许，其他不展示
+				// 网盘链接展示规则：仅 feijipan/quark 允许，其他不展示
 				boolean isValidPan = pan2 != null && (
 						pan2.contains("feijipan.com") || pan2.contains("feijipan.cn")
-						|| pan2.contains("quark.cn") || pan2.contains("quark.com")
-						|| pan2.contains("pikpak"));
+						|| pan2.contains("quark.cn") || pan2.contains("quark.com"));
 				System.out.println("[DEBUG-ZM-REPLY] url2=" + url2 + ", pan2=" + pan2 + ", isValidPan=" + isValidPan + ", isAdmin=" + isAdmin);
 				if (!isValidPan) {
 					pan2 = "";
@@ -1648,14 +1700,8 @@ public class RobotServiceImpl implements RobotService {
 					String info = identifier + "," + url + "," + title + "," + receivedText + "," + chatId + ","
 							+ coverString;
 					info += "," + byString + "," + wpString + "," + author + "," + zhindex + "," + topicok + "," + receivedMessage.getFrom().getId() + "," + receivedMessage.getMessageId() + "," + (messageThreadId != null ? messageThreadId : "") + "," + sourceBot + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
-					final String finalInfo = info;
-					org.springframework.transaction.support.TransactionSynchronizationManager
-							.registerSynchronization(new TransactionSynchronizationAdapter() {
-								@Override
-								public void afterCommit() {
-									jedisClient.rpush("videos", finalInfo);
-								}
-							});
+							// 写入 outbox 并发布事件，事务提交后由监听器推入 Redis
+							publishVideoPushEvent(receivedText, String.valueOf(receivedMessage.getFrom().getId()), chatId, sourceBot, info, "videos");
 				}
 			}
 		}
@@ -1684,6 +1730,11 @@ public class RobotServiceImpl implements RobotService {
 			}
 			wallet.setBalance(wallet.getBalance() - 1);
 			wallet.setNickname(identifier);
+		}
+
+		// 搜索话题提取成功，递增每日计数（bc/tg 及 VIP 频道缓存链接不计数）
+		if (topicok == 1) {
+			incrDailyExtractCount(uid, topicok, pri, byString);
 		}
 
 		try {
@@ -2142,7 +2193,8 @@ public class RobotServiceImpl implements RobotService {
 				listWaiwangzmq.get(i).setCover(
 						"https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56");
 			InputMediaPhoto photo = new InputMediaPhoto(listWaiwangzmq.get(i).getCover());
-			String tit = i + "\t" + tt + "\t时长：" + listWaiwangzmq.get(i).getDuration() + "\t" + "机器人口令：zm"
+			String zmqTag2 = getVipFreeTag(listWaiwangzmq.get(i));
+			String tit = i + "\t" + zmqTag2 + tt + "\t时长：" + listWaiwangzmq.get(i).getDuration() + "\t" + "机器人口令：zm"
 					+ listWaiwangzmq.get(i).getVid() + "\t" + link;
 
 			if (channelMsg.getFrom().getUserName() != null
@@ -2212,7 +2264,8 @@ public class RobotServiceImpl implements RobotService {
 						"https://s3imgqnv1.ikzuo.com/app/user/117431_20250825050414_8c56e54391d88227e0081a266509c952.png?imageView2/2/w/56");
 
 			InputMediaPhoto photo = new InputMediaPhoto(listWaiwang2.get(i).getCover());
-			String tit = i + "\t" + tt + "\tid:" + listWaiwang2.get(i).getUid() + "\t网名："
+			String bcTag2 = getVipFreeTag(listWaiwang2.get(i));
+			String tit = i + "\t" + bcTag2 + tt + "\tid:" + listWaiwang2.get(i).getUid() + "\t网名："
 					+ listWaiwang2.get(i).getNickname() + "\t时长：" + listWaiwang2.get(i).getDuration() + "\t时间："
 					+ listWaiwang2.get(i).getDt() + "\t封面：" + listWaiwang2.get(i).getCover();
 
@@ -2286,7 +2339,8 @@ public class RobotServiceImpl implements RobotService {
 
 			String tt = cleanSearchTitle(list.get(i).getTitle()).split("_")[0];
 
-			String tit = i + "\t" + tt + "\tid:" + list.get(i).getAuthor() + "\t网名：" + list.get(i).getUrlkey2()
+			String wwTag2 = getVipFreeTag(list.get(i));
+			String tit = i + "\t" + wwTag2 + tt + "\tid:" + list.get(i).getAuthor() + "\t网名：" + list.get(i).getUrlkey2()
 					+ "\t时长：" + list.get(i).getDuration() + "\t时间：" + list.get(i).getAddtime() + "\t封面："
 					+ list.get(i).getCover();
 
@@ -2380,7 +2434,8 @@ public class RobotServiceImpl implements RobotService {
 
 			String tt = cleanSearchTitle(listTaolu.get(i).getTitle()).split("_")[0];
 
-			String tit = i + "\t" + tt + "\tid:" + listTaolu.get(i).getAuthor() + "\t网名:"
+			String tlTag2 = getVipFreeTag(listTaolu.get(i));
+			String tit = i + "\t" + tlTag2 + tt + "\tid:" + listTaolu.get(i).getAuthor() + "\t网名:"
 					+ listTaolu.get(i).getUrlkey2() + "\t时间：" + listTaolu.get(i).getDt() + "\t封面："
 					+ listTaolu.get(i).getCover();
 
@@ -2437,7 +2492,7 @@ public class RobotServiceImpl implements RobotService {
 
 		}
 		criteriaWw.andTitleNotEqualTo("");
-		criteriaWw.andDurationGreaterThan("600");
+		criteriaWw.andDurationGreaterThan("60");
 		// 排除 friendindex = 1 的记录
 		criteriaWw.andFriendindexNotEqualTo(1);
 		exampleWaiwang.setOrderByClause("dt desc");
@@ -2456,7 +2511,8 @@ public class RobotServiceImpl implements RobotService {
 			if (tt.length() > 60)
 				tt = tt.substring(0, 60);
 
-			String tit = i + "\t" + tt + "\t时长:" + listWaiwang.get(i).getDuration() + "秒\t时间："
+			String tgTag2 = getVipFreeTag(listWaiwang.get(i));
+			String tit = i + "\t" + tgTag2 + tt + "\t时长:" + listWaiwang.get(i).getDuration() + "秒\t时间："
 					+ listWaiwang.get(i).getDt();
 
 			if (channelMsg.getFrom().getUserName() != null
@@ -2520,8 +2576,11 @@ public class RobotServiceImpl implements RobotService {
 				}
 				long rq = hit.getArticle().getLong("RQ");
 				String dt = sdf.format(new Date(rq));
+				java.util.Map<String, Object> chMap2 = new java.util.HashMap<>();
+				chMap2.put("url", hit.getArticle().getString("UR"));
+				String chTag2 = getVipFreeTagForChannel(chMap2);
 
-				re.append(i + "\t" + tt + "\t时间：" + dt + "\t时长：" + hit.getArticle().getString("CC") + "分 \t"
+				re.append(i + "\t" + chTag2 + tt + "\t时间：" + dt + "\t时长：" + hit.getArticle().getString("CC") + "分 \t"
 						+ "机器人口令：ch" + hit.getId() + "\t" + link + "\r\n");
 
 //				InputMediaPhoto photo = new InputMediaPhoto();
@@ -2807,7 +2866,7 @@ public class RobotServiceImpl implements RobotService {
 		}
 		
 		criteria.andTitleNotEqualTo("");
-		criteria.andDurationGreaterThan("600");
+		criteria.andDurationGreaterThan("60");
 		// 排除 friendindex = 1 的记录
 		criteria.andFriendindexNotEqualTo(1);
 		example.setOrderByClause("dt desc");
@@ -2831,8 +2890,107 @@ public class RobotServiceImpl implements RobotService {
 		return waiwang2VideoMapper.selectByExample(example);
 	}
 
-	private boolean checkDailyExtractLimit(String identifier, int topicok) {
-		return true;
+	/**
+	 * 判断是否为 VIP 频道缓存链接（秒发，不计入每日限制）
+	 */
+	private boolean isVipChannelLink(String url) {
+		return url != null && (url.contains("t.me/c/3576154874") || url.contains("telegram.me/c/3576154874"));
+	}
+
+	/**
+	 * 判断该次提取是否属于会员免费秒发资源
+	 * @param pri 指令前缀
+	 * @param byString tria/网盘/频道链接等实际资源地址
+	 */
+	private boolean isVipFreeInstant(String pri, String byString) {
+		// bc 无条件；tg 仅当 author（byString）有值时才属于会员免费秒发
+		return "bc".equals(pri) || ("tg".equals(pri) && byString != null && !byString.trim().isEmpty()) || isVipChannelLink(byString);
+	}
+
+	/**
+	 * 获取搜索结果/记事本中的会员免费秒发标记
+	 */
+	private String getVipFreeTag(Object video) {
+		if (video instanceof cn.exrick.manager.pojo.Waiwang2Video) {
+			return "【会员免费】【秒发】"; // bc
+		}
+		if (video instanceof cn.exrick.manager.pojo.WaiwangVideo) {
+			// tg：author（实际资源地址）有值才属于会员免费秒发，否则不打标
+			String author = ((cn.exrick.manager.pojo.WaiwangVideo) video).getAuthor();
+			return author != null && !author.trim().isEmpty() ? "【会员免费】【秒发】" : "";
+		}
+		if (video instanceof cn.exrick.manager.pojo.ZmqVideo) {
+			cn.exrick.manager.pojo.ZmqVideo zv = (cn.exrick.manager.pojo.ZmqVideo) video;
+			String tria = zv.getTria();
+			if (isVipChannelLink(tria)) return "【会员免费】【秒发】";
+			// 2026-09-22 wckbot 且 tria=sk（未提取）标注冷门资源
+			String zurl = zv.getUrl();
+			if (zurl != null && zurl.contains("wckbot") && "sk".equals(tria)) return "【冷门资源，3元一个，私聊机器人提取】";
+			return "";
+		}
+		if (video instanceof cn.exrick.manager.pojo.WanwuVideo) {
+			String tria = ((cn.exrick.manager.pojo.WanwuVideo) video).getTria();
+			return isVipChannelLink(tria) ? "【会员免费】【秒发】" : "";
+		}
+		if (video instanceof cn.exrick.manager.pojo.Taolu3Video) {
+			String tria = ((cn.exrick.manager.pojo.Taolu3Video) video).getTria();
+			return isVipChannelLink(tria) ? "【会员免费】【秒发】" : "";
+		}
+		return "";
+	}
+
+	private String getVipFreeTagForChannel(Map<String, Object> video) {
+		if (video == null) return "";
+		String url = video.get("url") != null ? video.get("url").toString() : "";
+		return isVipChannelLink(url) ? "【会员免费】【秒发】" : "";
+	}
+
+	private boolean checkDailyExtractLimit(Long userId, int topicok, String pri, String byString) {
+		if (userId == null) {
+			return true;
+		}
+		// bc/tg 类型及 VIP 频道缓存链接不限制次数
+		if (isVipFreeInstant(pri, byString)) {
+			return true;
+		}
+		String today = new java.text.SimpleDateFormat("yyyyMMdd").format(new java.util.Date());
+		String dailyKey = "extract:daily:tg_search:" + userId + ":" + today;
+		String countStr = jedisClient.get(dailyKey);
+		int count = 0;
+		if (countStr != null && !countStr.isEmpty()) {
+			try {
+				count = Integer.parseInt(countStr);
+			} catch (NumberFormatException e) {
+				count = 0;
+			}
+		}
+		return count < extractDailyLimit;
+	}
+
+	private void incrDailyExtractCount(Long userId, int topicok, String pri, String byString) {
+		if (userId == null) {
+			return;
+		}
+		// bc/tg 类型及 VIP 频道缓存链接不计数
+		if (isVipFreeInstant(pri, byString)) {
+			return;
+		}
+		String today = new java.text.SimpleDateFormat("yyyyMMdd").format(new java.util.Date());
+		String dailyKey = "extract:daily:tg_search:" + userId + ":" + today;
+		long count = jedisClient.incr(dailyKey);
+		if (count == 1) {
+			// 第一次设置，添加当天24:00过期
+			try {
+				java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd");
+				java.util.Date now = new java.util.Date();
+				java.util.Date midnight = sdf.parse(sdf.format(now));
+				midnight = new java.util.Date(midnight.getTime() + 24 * 60 * 60 * 1000);
+				long ttl = (midnight.getTime() - now.getTime()) / 1000;
+				jedisClient.expire(dailyKey, (int) ttl);
+			} catch (Exception e) {
+				jedisClient.expire(dailyKey, 86400);
+			}
+		}
 	}
 
 	private String sortNotepadByTime(String content) {

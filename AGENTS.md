@@ -1,7 +1,68 @@
-# AI 知识库 - FundAlarm 交易系统
+## 2026-09-23 更新
 
-## 项目概述
-OKX 合约交易机器人，支持多品种（XAUT/DOGE）高频 T+0 交易与底仓网格交易。
+### 冷门资源（wckbot）群内禁止提取：399/386 群内不 enqueue，提示私聊提取
+
+**背景**：会员在群内提取冷门资源（wckbot 类型，推 wckbot_extract 队列的任务）会占用 worker 且群里付费场景不对，要求群内直接拒绝。
+
+**改动**（2 处，私聊提取不受影响）：
+1. `RobotServiceImpl.java` dealGetWork wckbot 分支（~1599，isWckbot 判定后最前面）：`chatId` 为 -1003992613609L 或 -1003867299066L 时，构造 SendMessage（setChatId + setReplyToMessageId(receivedMessage.getMessageId()) + 有话题时 setMessageThreadId，与 977 行同款话题保护），发送「冷门资源不能在群里提取，请私聊机器人提取」（try/catch TelegramApiException，沿用 1584 行 replyMessage 模式），然后 return 不 enqueue。
+2. `GroupNotepadBot.java`（~588，queueName 判定处）：isWckbot 为 true 时 `sendReply(chatId, messageId, 提示语)` 并 return，不推队列（该 bot 场景即群聊，无需再判 chatId）；queueName 恒为 "videos"。
+
+QQ 端（QQBotRealDataProcessor）未改。
+
+**部署**：`setsid nohup ./deploy.sh`（备份 backup/20260923_162313，日志 /tmp/deploy_0922_wckbot_group.log）。编译两模块均成功。验证：Tomcat PID 3812211 存活；`grep -a "冷门资源不能在群里提取"` 在 webapps/ROOT 的 RobotServiceImpl.class 与 GroupNotepadBot.class 均命中（grep -a 查 UTF-8 字节，strings 会漏）；重启后 110 个 QQ bot READY 正常。
+
+注意：旧路径 /home/www/stock/fundalarm 是 3 月遗留目录，实际部署目标是 /home/www/tomcat/apache-tomcat-9.0.102/webapps/ROOT。
+
+## 2026-09-22 更新
+
+### wckbot 冷门资源前缀（tria=sk 时标题加【冷门资源，3元一个，私聊机器人提取】）
+
+**背景**：wckbot 视频入库时 tria='sk'（未提取占位符），用户提取后要私聊机器人单独付费提取，需在标题上加前缀提示。
+
+**改动**（5 处，判据统一为 `url 含 "wckbot" && tria="sk"`）：
+1. `RobotServiceImpl.java` wckbot 分支（~1597）：`title` 变量直接加前缀——同时作用于 wckbotTask 队列标题（→ donw 交付视频 caption）和即时回复（1634）。
+2. `RobotServiceImpl.java` `getVipFreeTag` ZmqVideo 分支（~2903）：与 VIP 频道链接 tag 互斥（tria 不可能既是 sk 又是 t.me 链），返回冷门前缀——作用于 TG 搜索相册 caption。
+3. `AsyncEventPublisher.java` `getVipFreeTag` ZmqVideo 分支（~473）：同上，作用于记事本 TXT / QQ 搜索结果（694 行 `num + ". " + tag + title` 拼装处生效）。⚠️ 与 RobotServiceImpl 的 getVipFreeTag 是**复制关系，两处都要改**。
+4. `GroupNotepadBot.java`（~511）：TG 群 bot 回复标题加前缀（同时进队列任务标题）。
+5. `QQBotRealDataProcessor.java`（~306）：QQ bot 即时回复追加前缀提示行（QQ 回复不显示标题，标题前缀走第 3 点的记事本机制）。
+
+**前缀内的逗号是中文「，」**，不会破坏 17 字段 CSV 格式。
+
+**部署**：`setsid nohup ./deploy.sh`（备份 backup/20260922_165502）。已验证：部署后 4 个 class 二进制均含「冷门资源」常量（grep -a 直接查 UTF-8 字节；strings 默认只提取 ASCII 会漏）；重启后 122 个 QQ bot READY 正常；11 个 invalid appid 错误为个别 bot 配置历史遗留，与本次无关。
+
+## 2026-09-14 更新
+
+### 搜索话题每日提取次数限制 5 -> 1000
+
+**文件**：`robotium-fundalarm-service/src/main/java/cn/exrick/manager/service/impl/RobotServiceImpl.java:110`
+
+**改动**：`@Value("${extract.daily.limit:5}")` 改为 `@Value("${extract.daily.limit:1000}")`（搜索话题提取 topicok=1 每日限制，bc/tg 及 VIP 缓存秒发不限制；配置文件未覆盖此 key，走默认值）。
+
+**部署**：`./deploy.sh`（备份 backup/20260914_151551，setsid nohup 脱离执行防连坐杀 Tomcat）。已 javap 验证部署后 class 常量池为 1000。重启后 QQ bot 启动前 1~2 分钟报"断网时Token/网关请求会失败"属启动竞态，随后自动恢复在线。
+
+---
+
+## 2026-09-13 更新
+
+### 搜索短视频搜不到修复：waiwang_video 搜索 duration > 600 降到 > 60
+
+**背景**：waiwang_monitor 采集端给 -1003300283056 / -1003460975141 两频道开了短视频白名单并补采 1.2 万条后，机器人搜索「恶魔辣妹」（271/303/476s）仍 0 结果。
+
+**根因**：Java 搜索端所有查 `waiwang_video` 的入口都写死 `andDurationGreaterThan("600")`，与采集端 MIN_DURATION=600 是同一道墙的两端。
+
+**改动**：4 处 `andDurationGreaterThan("600")` → `("60")`：
+- `RobotServiceImpl.java:687`（TG bot 频道搜索）
+- `RobotServiceImpl.java:2472`（同款频道搜索第二处）
+- `RobotServiceImpl.java:2846`（searchWaiwang API）
+- `GroupNotepadBot.java:811`（QQ bot TG 搜索）
+
+**部署**：`./deploy.sh` 重新编译部署（备份 backup/20260913_155421）。坑：Kimi 后台任务 60s 超时会连坐杀 Tomcat，startup.sh 必须 `setsid nohup` 脱离。重启后 53 个 QQ bot 配置 READY 正常。
+
+**验证**：`duration > 60 AND friendindex <> 1 AND title LIKE '%恶魔辣妹%'` 命中 3/3；javap 反编译部署后的 class 确认 4 处ldc 均为 String 60。
+
+---
+
 
 ---
 
@@ -1250,6 +1311,22 @@ score.passed = (ATR ≥ config.minAtrForScore) && total >= 35
 **效果**:
 - `【T指标】` 恢复正常显示（每分钟 1 次）
 - 全平相关信息在同一行内一目了然
+
+#### 15. 新增 QQ Bot #53（V2026.09.12）
+
+**变更**:
+- 在 `qqbot_bots.json` 中新增机器人 `1905600584`（clientSecret: `rOwU3dDoP1dGtXCrXDubJ1kUEzkWI5sg`），命名为 "机器人53"
+- 已同步更新源码 `src/main/resources/qqbot_bots.json` 并部署到 Tomcat（webapps/ROOT/WEB-INF/classes/），重启后生效（MultiQQBotManager 在 ContextRefreshedEvent 时加载）
+
+**验证**:
+```
+[MultiQQBot] 启动机器人: 机器人53 (appId: 1905600584)
+[QQBot] 收到事件: READY (username: 机器人1905600584)
+```
+
+**注意**: 重启后机器人33(1904066622)/43(1904662531)/44(1904870158)/49(1905598058) 凭据已失效（invalid appid or secret，100016），与本次新增无关，待清理。
+
+---
 
 #### 14. 新增 QQ Bot #10（V2026.04.14）
 
@@ -6644,3 +6721,9 @@ python3 send_vip_expire_by_group.py --send
 **部署**:
 - `mvn clean package -DskipTests` 后替换 Tomcat `ROOT.war` 并重启 Tomcat。
 
+
+## 2026-09-23 更新（补充）
+
+### 群内冷门资源拦截追加会员群 -1003205013648
+
+RobotServiceImpl wckbot 群拦截条件由 399/386 两群扩为三群（+3205013648，t.me/c/3205013648 频道）。二次部署 backup/20260923_162910，验证 class 常量与 QQ bot READY 正常。
