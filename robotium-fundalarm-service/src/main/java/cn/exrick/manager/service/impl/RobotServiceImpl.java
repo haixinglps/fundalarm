@@ -1614,7 +1614,10 @@ public class RobotServiceImpl implements RobotService {
 		} else {
 
 			// wckbot 类型特殊处理：推入 wckbot_extract 队列
-			boolean isWckbot = pri.contentEquals("zm") && url != null && url.contains("wckbot");
+			// 2026-10-29：wckbot 站已死(clientHold)，必须 tria=sk 才走冷队列——
+			// 已提取(tria=频道链)的 wckbot 资源走正常 zm 秒发流程，否则会被 worker 拿着死链白跑
+			boolean isWckbot = pri.contentEquals("zm") && url != null && url.contains("wckbot")
+					&& byString != null && byString.equals("sk");
 			// 2026-10-28 永慕(yongmufoot.org, type=60) 同冷门规则：未提取(tria=sk)时打标/新用户限制/禁群内提取，
 			// 推 ymf_extract 队列由 ymf worker 支付购买(3-4金币/帖)；已提取后 tria=频道链自动脱离冷门
 			boolean isYmf = pri.contentEquals("zm") && url != null && url.contains("yongmufoot")
