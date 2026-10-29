@@ -304,16 +304,19 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
             if (needDownload) {
                 // 需要下载，推送到 Redis 队列（通过事务 + 事件机制）
                 String info = buildRedisMessage(userId, videoInfo, content, nickname);
-                // 与 RobotServiceImpl 保持一致：仅 zm 指令且 url 含 wckbot 时走 wckbot_extract 队列
+                // 与 RobotServiceImpl 保持一致：zm 指令且 url 含 wckbot/yongmufoot 且未提取(sk) 走冷门队列
                 boolean isWckbot = "zm".equals(cmd) && videoInfo.url != null && videoInfo.url.contains("wckbot");
+                boolean isYmfSk = "zm".equals(cmd) && videoInfo.url != null && videoInfo.url.contains("yongmufoot")
+                        && videoInfo.byString != null && videoInfo.byString.equals("sk");
+                String coldQueue = isYmfSk ? "ymf_extract" : "wckbot_extract";
                 // 2026-09-30 新用户免费额度限制：version=扣费成功次数（每次扣费+1，初始0）。
                 // 注册赠送的前5次（version<5）谁都不能提冷门资源——充值、VIP 均不解锁；用完5次才解锁
-                if (isWckbot && videoInfo.byString != null && videoInfo.byString.equals("sk")
+                if ((isWckbot || isYmfSk)
                         && (wallet.getVersion() == null || wallet.getVersion() < 5)) {
                     context.sendResults("【新用户免费额度说明】注册赠送的前5次提取仅限普通资源，暂不能提取冷门资源（充值也不能提前解锁）；5次用完后即可提取，充值可加提取次数\n客服 QQ: 2167485304");
                     return;
                 }
-                String queueName = isWckbot ? "wckbot_extract" : REDIS_QUEUE_KEY;
+                String queueName = (isWckbot || isYmfSk) ? coldQueue : REDIS_QUEUE_KEY;
                 
                 if (extractTransactionService == null) {
                     log.error("[QQBot] ExtractTransactionService 未注入，无法事务推队列");
