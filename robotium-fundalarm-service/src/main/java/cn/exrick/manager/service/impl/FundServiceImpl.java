@@ -258,17 +258,20 @@ public class FundServiceImpl implements FundService {
 		record.setSuccesscount(fundItem.getSuccesscount());
 		record.setUpcount(fundItem.getUpcount());
 
-		BigDecimal chajuShichang = price.subtract(new BigDecimal(lastvalue));
-
 		BigDecimal dxzzlShichang = new BigDecimal("0");
-		if (!lastvalue.equals("0")) {
+		if ((lastvalue != null) && (!"0".equals(lastvalue))) {
+			BigDecimal chajuShichang = price.subtract(new BigDecimal(lastvalue));
 			dxzzlShichang = chajuShichang.divide(new BigDecimal(lastvalue), 5, RoundingMode.DOWN)
 					.multiply(new BigDecimal("100"));
 		}
 		BigDecimal dxzzl = new BigDecimal("0");
+		boolean realBuyPriceValid = (realbuyprice != null)
+				&& (realbuyprice.compareTo(new BigDecimal("0")) != 0);
 		if ((tag == 1) || (tag == 2)) {
-			BigDecimal chaju = price.subtract(realbuyprice);
-			dxzzl = chaju.divide(realbuyprice, 4, RoundingMode.DOWN).multiply(new BigDecimal("100"));
+			if (realBuyPriceValid) {
+				BigDecimal chaju = price.subtract(realbuyprice);
+				dxzzl = chaju.divide(realbuyprice, 4, RoundingMode.DOWN).multiply(new BigDecimal("100"));
+			}
 			record.setComment(dxzzl.toString());
 			String tips = "";
 			if (tag == 1) {
@@ -281,8 +284,10 @@ public class FundServiceImpl implements FundService {
 
 			updateIndex(tableName, 1, money, record.getComment());
 		} else {
-			BigDecimal chaju = price.subtract(realbuyprice);
-			dxzzl = chaju.divide(realbuyprice, 4, RoundingMode.DOWN).multiply(new BigDecimal("100"));
+			if (realBuyPriceValid) {
+				BigDecimal chaju = price.subtract(realbuyprice);
+				dxzzl = chaju.divide(realbuyprice, 4, RoundingMode.DOWN).multiply(new BigDecimal("100"));
+			}
 
 			record.setComment(dxzzl.toString());
 			record.setWangge(dxzzlShichang);

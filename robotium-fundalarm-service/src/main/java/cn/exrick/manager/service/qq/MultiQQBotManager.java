@@ -53,10 +53,16 @@ public class MultiQQBotManager {
 	private cn.exrick.manager.mapper.TbWalletMapper tbWalletMapper;
 
 	@Autowired
+	private cn.exrick.manager.mapper.WanwuAuthorDetailsMapper wanwuAuthorDetailsMapper;
+
+	@Autowired
 	private cn.exrick.common.jedis.JedisClient jedisClient;
 
 	@Autowired
 	private cn.exrick.manager.service.impl.AsyncEventPublisher publisher;
+
+	@Autowired
+	private cn.exrick.manager.service.impl.ExtractTransactionService extractTransactionService;
 
 	// appId -> Bot客户端映射
 	private final Map<String, QQBotClient> botClients = new ConcurrentHashMap<>();
@@ -185,9 +191,10 @@ public class MultiQQBotManager {
 			log.info("[MultiQQBot] 启动机器人: {} (appId: {})", config.getName(), appId);
 
 			// 创建消息处理器（传入 manager 引用，用于后续回复）
-			QQBotRealDataProcessor handler = new QQBotRealDataProcessor(robotService, tbWalletMapper, jedisClient,
-					resultLimit);
+			QQBotRealDataProcessor handler = new QQBotRealDataProcessor(robotService, tbWalletMapper,
+					wanwuAuthorDetailsMapper, jedisClient, resultLimit);
 			handler.setPublisher(publisher);
+			handler.setExtractTransactionService(extractTransactionService);
 
 			// 创建并启动客户端
 			QQBotClient client = new QQBotClient(appId, config.getClientSecret(), taskExecutor, handler);

@@ -283,4 +283,14 @@
     where uid = #{uid,jdbcType=VARCHAR}
       and balance > 0
   </update>
+
+  <!-- 2026-10-28 按作品价格扣费（角单位）：余额充足才扣，防止并发Lost Update -->
+  <update id="deductBalanceAmount">
+    update tb_wallet
+    set balance = balance - #{amount,jdbcType=INTEGER},
+        version = version + 1,
+        updated = now()
+    where uid = #{uid,jdbcType=VARCHAR}
+      and balance >= #{amount,jdbcType=INTEGER}
+  </update>
 </mapper>

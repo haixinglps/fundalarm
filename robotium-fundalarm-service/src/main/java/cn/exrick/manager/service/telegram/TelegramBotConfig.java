@@ -72,6 +72,7 @@ public class TelegramBotConfig {
 
 		Set<Long> groups = new HashSet<>(Arrays.asList(-1003992613609L, -1004298122427L));
 		Map<Long, List<Integer>> topics = new HashMap<>();
+		topics.put(-1003992613609L, Arrays.asList(1));  // 399群只处理默认话题
 
 		TelegramChannelMonitor monitor = new TelegramChannelMonitor(
 				botToken2, botUsername2, channelUsername, botOptions,

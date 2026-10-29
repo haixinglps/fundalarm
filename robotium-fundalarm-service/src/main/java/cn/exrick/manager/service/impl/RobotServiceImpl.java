@@ -87,6 +87,24 @@ import cn.exrick.manager.service.util.getSign;
 
 @Service
 public class RobotServiceImpl implements RobotService {
+
+	// 2026-10-28 动态定价（角单位，1元=10角）。存量余额已×10迁移，新用户默认50角=5元免费额度（仅普通档可用）
+	private static final int NORMAL_DEDUCT_JIAO = 30;   // 普通已缓存资源 30角=3元（维持原1次=3元定价）
+
+	/** 冷门资源(tria=sk)扣款：原价(price金币≈元) + 1元利润，单位角；库价缺失按3金币计 */
+	private static int coldDeductJiao(Integer price) {
+		int p = (price != null && price > 0) ? price : 3;
+		return (p + 1) * 10;
+	}
+
+	/** 2026-10-29：vid 非数字（rec 录制任务/带前缀）返回 null，防搜索链路 parseInt 雪崩 */
+	private static Integer parseVidOrNull(String vid) {
+		try {
+			return Integer.parseInt(vid);
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
 	private static final Logger log = LoggerFactory.getLogger(RobotServiceImpl.class);
 	@Autowired
 	private TbUserMapper tbUserMapper;
@@ -413,6 +431,7 @@ public class RobotServiceImpl implements RobotService {
 		exampleWaiwangzmq.setOrderByClause("addtime desc");
 		PageHelper.startPage(1, 5);
 		List<ZmqVideo> listWaiwangzmq = zmqVideoMapper.selectByExample(exampleWaiwangzmq);
+		removeDeadWckbot(listWaiwangzmq);   // 2026-10-28 wckbot 站报废：type91-99 且 tria=sk 不出现在搜索
 		PageInfo<ZmqVideo> pizmqInfo = new PageInfo<ZmqVideo>(listWaiwangzmq);
 		System.out.println("zmq查询完成，结果数: " + listWaiwangzmq.size() + ", 总数: " + pizmqInfo.getTotal());
 
@@ -999,7 +1018,7 @@ public class RobotServiceImpl implements RobotService {
 		} else {
 
 			TbWallet wallet = new TbWallet();
-			wallet.setBalance(5);
+			wallet.setBalance(50);
 			wallet.setCreated(new Date());
 			wallet.setNickname(identifier);
 			wallet.setUid(receivedMessage.getFrom().getId() + "");
@@ -1025,8 +1044,8 @@ public class RobotServiceImpl implements RobotService {
 		java.util.List<String> extractCommands = java.util.Arrays.asList("ww", "zm", "tl", "ch", "tg", "bc", "zb");
 		boolean isVipGroup = chatId.equals(-1003867299066L) || chatId.equals(-1003992613609L);
 		if ((topicok == 0 || topicok == 2) && extractCommands.contains(pri) && !isVipGroup)
-			if (wallets.size() == 0 || wallets.get(0).getBalance() == null || wallets.get(0).getBalance() == 0) {
-				replyText += "请找客服qq" + rechargeQQ + "充值\n";
+			if (wallets.size() == 0 || wallets.get(0).getBalance() == null || wallets.get(0).getBalance() < NORMAL_DEDUCT_JIAO) {
+				replyText += "请找客服qq" + rechargeQQ + "充值（3元/次，单次可充3元）\n";
 				replyMessage.setText(replyText);
 				try {
 					getSender().execute(replyMessage);
@@ -1047,6 +1066,8 @@ public class RobotServiceImpl implements RobotService {
 		String author = "";
 		String avatarUrl = "";
 		int zhindex = 0;
+		Integer workPrice = null;   // 2026-10-28 zmq_video.price，冷门动态定价用
+		int deductAmount = NORMAL_DEDUCT_JIAO;   // 2026-10-28 本次提取扣款（角），冷门分支会改
 		int yc = 0;
 
 		String table = "wanwu_video";
@@ -1202,6 +1223,7 @@ public class RobotServiceImpl implements RobotService {
 
 
 				wpString = listZmq.get(0).getUptag3() + "";
+				workPrice = listZmq.get(0).getPrice();   // 2026-10-28 冷门动态定价
 				// 如果url中含有过期标记，则执行一个再次采集操作 54545采集。
 				ZmqVideo record = new ZmqVideo();
 				record.setGoodtag(1);
@@ -1593,8 +1615,55 @@ public class RobotServiceImpl implements RobotService {
 
 			// wckbot 类型特殊处理：推入 wckbot_extract 队列
 			boolean isWckbot = pri.contentEquals("zm") && url != null && url.contains("wckbot");
+			// 2026-10-28 永慕(yongmufoot.org, type=60) 同冷门规则：未提取(tria=sk)时打标/新用户限制/禁群内提取，
+			// 推 ymf_extract 队列由 ymf worker 支付购买(3-4金币/帖)；已提取后 tria=频道链自动脱离冷门
+			boolean isYmf = pri.contentEquals("zm") && url != null && url.contains("yongmufoot")
+					&& byString != null && byString.equals("sk");
+			String coldQueue = isYmf ? "ymf_extract" : "wckbot_extract";
+			// 2026-10-28 动态定价（角单位，1元=10角）：普通资源30角(3元)；冷门(tria=sk)=(price金币+1元)*10，库价缺失按3金币计
+			if ((isWckbot || isYmf) && byString != null && byString.equals("sk")) {
+				deductAmount = coldDeductJiao(workPrice);
+				// 冷门扣费前余额校验，不足则直接拒绝（此时还未推队列，不会产生白嫖单）
+				if (wallet.getBalance() == null || wallet.getBalance() < deductAmount) {
+					SendMessage poorReply = new SendMessage();
+					poorReply.setChatId(chatId.toString());
+					poorReply.setReplyToMessageId(receivedMessage.getMessageId());
+					if (messageThreadId != null) {
+						poorReply.setMessageThreadId(messageThreadId);
+					}
+					poorReply.setText("⚠️ 余额不足：该冷门作品需 " + (deductAmount/10) + " 元，你的余额 "
+							+ (wallet.getBalance() != null ? wallet.getBalance()/10 : 0) + " 元\n请联系客服QQ" + rechargeQQ + "充值（3元/次，单次可充3元）");
+					try {
+						getSender().execute(poorReply);
+					} catch (TelegramApiException e1) {
+						e1.printStackTrace();
+						log.error("服务器异常");
+					}
+					return;
+				}
+			}
 
-			if (isWckbot) {
+			if (isWckbot || isYmf) {
+				// 2026-09-30 新用户免费额度限制：version=deductBalance 扣费成功次数（每次+1，初始0）。
+				// 注册赠送的前5次提取（version<5）谁都不能提冷门资源——充值、VIP 均不解锁；用完5次（version>=5）才解锁。
+				// 冷门判据与打标一致：wckbot/ymf 且 tria=sk
+				if (byString != null && byString.equals("sk")
+						&& (wallet.getVersion() == null || wallet.getVersion() < 5)) {
+					SendMessage coldReply = new SendMessage();
+					coldReply.setChatId(chatId.toString());
+					coldReply.setReplyToMessageId(receivedMessage.getMessageId());
+					if (messageThreadId != null) {
+						coldReply.setMessageThreadId(messageThreadId);
+					}
+					coldReply.setText("【新用户免费额度说明】注册赠送的前5次提取仅限普通资源，暂不能提取冷门资源（充值也不能提前解锁）；5次用完后即可提取，充值可加提取次数（3元/次）\n客服qq" + rechargeQQ + "充值");
+					try {
+						getSender().execute(coldReply);
+					} catch (TelegramApiException e1) {
+						e1.printStackTrace();
+						log.error("服务器异常");
+					}
+					return;
+				}
 				// 2026-09-22 冷门资源群内禁止提取：会员群（399/386/3205013648）内 wckbot 任务不 enqueue，提示私聊提取
 				if (chatId.equals(-1003992613609L) || chatId.equals(-1003867299066L) || chatId.equals(-1003205013648L)) {
 					SendMessage wckbotGroupReply = new SendMessage();
@@ -1628,7 +1697,7 @@ public class RobotServiceImpl implements RobotService {
 						+ (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + ","
 						+ (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
 				// 复用 outbox + 事件机制：事务提交后由监听器推入 wckbot_extract 队列
-				videoPushEventService.publish(receivedText, String.valueOf(receivedMessage.getFrom().getId()), chatId, sourceBot, wckbotTask, "wckbot_extract");
+				videoPushEventService.publish(receivedText, String.valueOf(receivedMessage.getFrom().getId()), chatId, sourceBot, wckbotTask, coldQueue);
 
 				// 复用普通 zm 的回复样式，URL 按原规则隐藏
 				String url2 = url;
@@ -1716,9 +1785,9 @@ public class RobotServiceImpl implements RobotService {
 		// 开始修改用户余额
 		// 原子扣费，防止并发 Lost Update；会员群（386/399）提取不扣余额
 		if ((topicok == 0 || topicok == 2) && !isVipGroup) {
-			int deductRows = tbWalletMapper.deductBalance("" + uid);
+			int deductRows = tbWalletMapper.deductBalanceAmount("" + uid, deductAmount);
 			if (deductRows == 0) {
-				replyText += "\n⚠️ 余额不足，请联系客服QQ" + rechargeQQ + "充值";
+				replyText += "\n⚠️ 余额不足，请联系客服QQ" + rechargeQQ + "充值（3元/次，单次可充3元）";
 				replyMessage.setText(replyText);
 				try {
 					getSender().execute(replyMessage);
@@ -1728,7 +1797,7 @@ public class RobotServiceImpl implements RobotService {
 				}
 				return;
 			}
-			wallet.setBalance(wallet.getBalance() - 1);
+			wallet.setBalance(wallet.getBalance() - deductAmount);
 			wallet.setNickname(identifier);
 		}
 
@@ -1789,7 +1858,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateDuration(String vid, String duration) {
 
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		Waiwang2Video record = new Waiwang2Video();
 		record.setDuration(duration);
@@ -1804,7 +1874,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateLocation(String vid, String location) {
 
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		Waiwang2Video record = new Waiwang2Video();
 		record.setPantag(location);
@@ -1819,7 +1890,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateLocationtl(String vid, String location) {
 
 		Taolu3VideoExample example = new Taolu3VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		Taolu3Video record = new Taolu3Video();
 		record.setTria(location);
@@ -1834,7 +1906,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateLocationww(String vid, String location) {
 
 		WanwuVideoExample example = new WanwuVideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		WanwuVideo record = new WanwuVideo();
 		record.setTria(location);
@@ -1849,7 +1922,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateUrl(String vid, String url) {
 
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		Waiwang2Video record = new Waiwang2Video();
 		record.setType(url);
@@ -1879,7 +1953,8 @@ public class RobotServiceImpl implements RobotService {
 			return;
 		String title = video.getTitle();
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		Waiwang2Video record = new Waiwang2Video();
 		record.setType(url);
@@ -1907,7 +1982,8 @@ public class RobotServiceImpl implements RobotService {
 	public Waiwang2Video getVideo(String vid) {
 
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return null;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		List<Waiwang2Video> videos = waiwang2VideoMapper.selectByExample(example);
 		if (videos.size() > 0)
@@ -1924,7 +2000,8 @@ public class RobotServiceImpl implements RobotService {
 	public Waiwang2Video getVideoWW2(String vid) {
 
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
-		example.createCriteria().andIdEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return null;
+		example.createCriteria().andIdEqualTo(parseVidOrNull(vid));
 
 		List<Waiwang2Video> videos = waiwang2VideoMapper.selectByExample(example);
 		if (videos.size() > 0)
@@ -1959,7 +2036,8 @@ public class RobotServiceImpl implements RobotService {
 	public WanwuVideo getVideoWw(String vid) {
 
 		WanwuVideoExample example = new WanwuVideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return null;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		List<WanwuVideo> videos = wanwuVideoMapper.selectByExample(example);
 		if (videos.size() > 0)
@@ -1976,7 +2054,8 @@ public class RobotServiceImpl implements RobotService {
 	public Taolu3Video getVideotl(String vid) {
 
 		Taolu3VideoExample example = new Taolu3VideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return null;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		List<Taolu3Video> videos = taolu3VideoMapper.selectByExample(example);
 		if (videos.size() > 0)
@@ -1993,7 +2072,8 @@ public class RobotServiceImpl implements RobotService {
 	public ZmqVideo getVideoZmq(String vid) {
 
 		ZmqVideoExample example = new ZmqVideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return null;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		List<ZmqVideo> videos = zmqVideoMapper.selectByExample(example);
 		if (videos.size() > 0)
@@ -2010,7 +2090,8 @@ public class RobotServiceImpl implements RobotService {
 	public WaiwangVideo getVideoTG(String vid) {
 
 		WaiwangVideoExample example = new WaiwangVideoExample();
-		example.createCriteria().andIdEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return null;
+		example.createCriteria().andIdEqualTo(parseVidOrNull(vid));
 
 		List<WaiwangVideo> videos = waiwangVideoMapper.selectByExample(example);
 		if (videos.size() > 0)
@@ -2176,6 +2257,7 @@ public class RobotServiceImpl implements RobotService {
 		exampleWaiwangzmq.setOrderByClause("addtime desc");
 		PageHelper.startPage(1, 10000);
 		List<ZmqVideo> listWaiwangzmq = zmqVideoMapper.selectByExample(exampleWaiwangzmq);
+		removeDeadWckbot(listWaiwangzmq);   // 2026-10-28 wckbot 站报废：搜索结果剔除 wckbot 分类(type 91-99) 且未交付(tria='sk') 的记录
 		PageInfo<ZmqVideo> pizmqInfo = new PageInfo<ZmqVideo>(listWaiwangzmq);
 
 		re.append("网页搜索 " + pizmqInfo.getTotal() + "条\r\n");
@@ -2656,7 +2738,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateLocationTG(String vid, String location) {
 
 		WaiwangVideoExample example = new WaiwangVideoExample();
-		example.createCriteria().andIdEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andIdEqualTo(parseVidOrNull(vid));
 
 		WaiwangVideo record = new WaiwangVideo();
 		record.setAuthor(location);
@@ -2671,7 +2754,8 @@ public class RobotServiceImpl implements RobotService {
 	public void updateLocationzmq(String vid, String location) {
 
 		ZmqVideoExample example = new ZmqVideoExample();
-		example.createCriteria().andVidEqualTo(Integer.parseInt(vid));
+		if (parseVidOrNull(vid) == null) return;
+		example.createCriteria().andVidEqualTo(parseVidOrNull(vid));
 
 		ZmqVideo record = new ZmqVideo();
 		record.setTria(location);
@@ -2770,11 +2854,19 @@ public class RobotServiceImpl implements RobotService {
 		
 		PageHelper.startPage(page, pageSize);
 		List<ZmqVideo> result = zmqVideoMapper.selectByExample(example);
+		removeDeadWckbot(result);   // 2026-10-28 wckbot 站报废，搜索统一过滤：type 91-99 且 tria='sk'（未交付）的记录不展示
 		log.info("ZM搜索: keyword={}, 结果数={}", keyword, result.size());
 		return result;
 	}
 	
-	@Override
+	/** 2026-10-28 wckbot 站报废：type 91-99 且 tria=sk（未交付）的记录从搜索/列表剔除 */
+	private static void removeDeadWckbot(java.util.List<ZmqVideo> list) {
+		if (list == null) {
+			return;
+		}
+		list.removeIf(v -> v.getType() != null && v.getType() >= 91 && v.getType() <= 99 && "sk".equals(v.getTria()));
+	}
+
 	public List<Waiwang2Video> searchWaiwang2(String keyword, int page, int pageSize) {
 		Waiwang2VideoExample example = new Waiwang2VideoExample();
 		Waiwang2VideoExample.Criteria criteria = example.createCriteria();
@@ -2925,7 +3017,8 @@ public class RobotServiceImpl implements RobotService {
 			if (isVipChannelLink(tria)) return "【会员免费】【秒发】";
 			// 2026-09-22 wckbot 且 tria=sk（未提取）标注冷门资源
 			String zurl = zv.getUrl();
-			if (zurl != null && zurl.contains("wckbot") && "sk".equals(tria)) return "【冷门资源，3元一个，私聊机器人提取】";
+			// 2026-09-22 wckbot 且 tria=sk（未提取）标注冷门资源；2026-10-28 永慕(yongmufoot) 同规则
+			if (zurl != null && (zurl.contains("wckbot") || zurl.contains("yongmufoot")) && "sk".equals(tria)) return "【冷门资源，3元一个，私聊机器人提取】";
 			return "";
 		}
 		if (video instanceof cn.exrick.manager.pojo.WanwuVideo) {

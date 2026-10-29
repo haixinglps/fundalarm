@@ -9,7 +9,7 @@ import cn.hutool.json.JSONObject;
 
 public class laoganma {
 
-//	https://www2.zimuquan25.uk/index.php/vod/show/id/1/page/1.html
+//	https://www1.zimuquan16.com/index.php/vod/show/id/1/page/1.html
 	static ThreadSafeFileWriter writer = null;
 
 	public static void main(String[] args) {

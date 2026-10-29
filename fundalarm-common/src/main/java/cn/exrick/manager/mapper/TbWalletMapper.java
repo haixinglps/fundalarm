@@ -34,4 +34,12 @@ public interface TbWalletMapper {
      * @return 影响行数，0表示扣费失败（余额不足或并发冲突）
      */
     int deductBalance(@Param("uid") String uid);
+
+    /**
+     * 2026-10-28 按作品价格扣费（角单位，1元=10角）：余额>=amount才扣，并增加version
+     * @param uid 用户UID
+     * @param amount 扣除金额（角）
+     * @return 影响行数，0表示扣费失败（余额不足或并发冲突）
+     */
+    int deductBalanceAmount(@Param("uid") String uid, @Param("amount") int amount);
 }

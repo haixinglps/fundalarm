@@ -3,6 +3,7 @@ package cn.exrick.manager.service.qq;
 import cn.exrick.common.jedis.JedisClient;
 import cn.exrick.manager.dto.SearchResultDTO;
 import cn.exrick.manager.mapper.TbWalletMapper;
+import cn.exrick.manager.mapper.WanwuAuthorDetailsMapper;
 import cn.exrick.manager.pojo.Taolu3Video;
 import cn.exrick.manager.pojo.TbWallet;
 import cn.exrick.manager.pojo.TbWalletExample;
@@ -15,9 +16,6 @@ import cn.exrick.manager.service.RobotService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.support.TransactionSynchronizationAdapter;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
@@ -46,6 +44,7 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
     private final QQBotReplyService replyService;
     private final int resultLimit;
     private final TbWalletMapper tbWalletMapper;
+    private final WanwuAuthorDetailsMapper wanwuAuthorDetailsMapper;
     private final JedisClient jedisClient;
     
     // 默认每类返回条数
@@ -53,13 +52,20 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
     // 新用户默认余额
     private static final int DEFAULT_BALANCE = 5;
     // 提取作品扣费金额
-    private static final int DEDUCT_AMOUNT = 1;
+    private static final int DEDUCT_AMOUNT = 30;
+
+    /** 冷门资源(tria=sk)扣款：原价(price金币≈元)+1元利润，单位角；库价缺失按3金币计 */
+    private static int coldDeductJiao(Integer price) {
+        int p = (price != null && price > 0) ? price : 3;
+        return (p + 1) * 10;
+    }
     // QQ 用户 topic 标识（用于区分 Telegram 的不同话题类型）
     private static final int QQ_TOPIC_TYPE = 3;
     // Redis 队列键名（和 Telegram 保持一致）
     private static final String REDIS_QUEUE_KEY = "videos";
     
     private cn.exrick.manager.service.impl.AsyncEventPublisher publisher;
+    private cn.exrick.manager.service.impl.ExtractTransactionService extractTransactionService;
     private QQBotClient currentClient;  // 当前处理消息的客户端（用于获取appId）
     
     // 消息去重：最近处理的消息ID
@@ -68,13 +74,16 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
     // 按 userId 细粒度锁，防止并发重复创建钱包
     private static final java.util.concurrent.ConcurrentHashMap<String, Object> walletLocks = new java.util.concurrent.ConcurrentHashMap<>();
     
-    public QQBotRealDataProcessor(RobotService robotService, TbWalletMapper tbWalletMapper, JedisClient jedisClient) {
-        this(robotService, tbWalletMapper, jedisClient, DEFAULT_LIMIT);
+    public QQBotRealDataProcessor(RobotService robotService, TbWalletMapper tbWalletMapper,
+                                  WanwuAuthorDetailsMapper wanwuAuthorDetailsMapper, JedisClient jedisClient) {
+        this(robotService, tbWalletMapper, wanwuAuthorDetailsMapper, jedisClient, DEFAULT_LIMIT);
     }
     
-    public QQBotRealDataProcessor(RobotService robotService, TbWalletMapper tbWalletMapper, JedisClient jedisClient, int resultLimit) {
+    public QQBotRealDataProcessor(RobotService robotService, TbWalletMapper tbWalletMapper,
+                                  WanwuAuthorDetailsMapper wanwuAuthorDetailsMapper, JedisClient jedisClient, int resultLimit) {
         this.robotService = robotService;
         this.tbWalletMapper = tbWalletMapper;
+        this.wanwuAuthorDetailsMapper = wanwuAuthorDetailsMapper;
         this.jedisClient = jedisClient;
         this.replyService = new QQBotReplyService();
         this.resultLimit = Math.max(1, Math.min(resultLimit, 5));
@@ -86,6 +95,14 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
     public void setPublisher(cn.exrick.manager.service.impl.AsyncEventPublisher publisher) {
         this.publisher = publisher;
         log.info("[QQBot] AsyncEventPublisher 已设置");
+    }
+    
+    /**
+     * 设置 ExtractTransactionService（用于事务内扣费 + 发布视频推送事件）
+     */
+    public void setExtractTransactionService(cn.exrick.manager.service.impl.ExtractTransactionService extractTransactionService) {
+        this.extractTransactionService = extractTransactionService;
+        log.info("[QQBot] ExtractTransactionService 已设置");
     }
     
     /**
@@ -154,6 +171,13 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
             }
             return;
         }
+
+        // 0a. 查询主播绑定手机号（gp + shortId）
+        if (message.hasCommandPrefix("gp")) {
+            String gpShortId = content.substring(2).trim();
+            handleGetPhone(gpShortId, context);
+            return;
+        }
         
         // 1. 提取作品指令
         if (message.hasCommandPrefix("ww", "tl", "bc", "zm", "tg", "ch")) {
@@ -179,6 +203,31 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
     }
     
     /**
+     * 处理 gp 指令：根据 shortId 查询主播 bindPhone
+     */
+    private void handleGetPhone(String shortId, QQBotReplyContext context) {
+        if (shortId == null || shortId.isEmpty()) {
+            context.sendResults("❌ 请输入 shortId，例如：gp113471");
+            return;
+        }
+        if (!shortId.matches("\\d+")) {
+            context.sendResults("❌ shortId 必须是数字");
+            return;
+        }
+        try {
+            String phone = wanwuAuthorDetailsMapper.selectBindPhoneByShortId(shortId);
+            if (phone == null || phone.trim().isEmpty()) {
+                context.sendResults("未找到 shortId=" + shortId + " 的绑定手机号");
+                return;
+            }
+            context.sendResults("shortId: " + shortId + "\n绑定手机号: " + phone.trim());
+        } catch (Exception e) {
+            log.error("[QQBot] gp指令查询失败: shortId={}", shortId, e);
+            context.sendResults("❌ 查询失败，请稍后重试");
+        }
+    }
+    
+    /**
      * 处理作品提取（带扣费 + 文件下载逻辑，和 Telegram 保持一致）
      */
     private void handleExtractWork(QQBotMessage message, QQBotReplyContext context) {
@@ -190,33 +239,28 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
         
         log.info("[QQBot] 提取作品: cmd={}, vid={}, user={}", cmd, vid, userId);
         
-        // 1. 获取 wallet 并判断用户类型
+        // 1. 获取 wallet 并判断用户类型（用于提示和余额预检）
         TbWallet wallet = getOrCreateWallet(userId, nickname);
-        Integer vipLevel = wallet.getVip();
-        boolean isVip = (vipLevel != null && vipLevel == 1);
+        int balanceBefore = wallet.getBalance() != null ? wallet.getBalance() : 0;
         
-        if (isVip) {
-            // VIP 用户：不检测余额、不扣费，已解除每日提取次数限制
-        } else {
-            // 非 VIP 用户：检测余额并扣费
-            if (wallet.getBalance() == null || wallet.getBalance() < DEDUCT_AMOUNT) {
-                context.sendResults("❌ 余额不足\n" +
-                    "当前余额: " + (wallet.getBalance() != null ? wallet.getBalance() : 0) + "\n" +
-                    "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
-                    "请联系客服 QQ: 2167485304 充值");
-                return;
-            }
+        // 所有用户统一检测余额并扣费，没有免费额度
+        if (balanceBefore < DEDUCT_AMOUNT) {
+            context.sendResults("❌ 余额不足\n" +
+                "当前余额: " + balanceBefore + "\n" +
+                "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
+                "请联系客服 QQ: 2167485304 充值（3元/次，单次可充3元）");
+            return;
         }
         
         // 发送"正在提取"提示
         String progressMsg = "⏳ 正在提取作品...\n" +
             "来源: " + getSourceName(cmd) + "\n" +
-            "ID: " + vid;
-        if (!isVip) {
-            progressMsg += "\n当前余额: " + wallet.getBalance();
-        }
+            "ID: " + vid +
+            "\n当前余额: " + balanceBefore;
         context.sendProgress(progressMsg);
         
+        // 2026-10-28 动态定价占位：try 内赋值（冷门=(price金币+1元)*10角，普通=30角），catch 用 deductRef 读取
+        final int[] deductRef = { DEDUCT_AMOUNT };
         try {
             // 提取作品信息（和 Telegram 逻辑一致）
             VideoInfo videoInfo = extractVideoInfo(cmd, vid);
@@ -226,85 +270,84 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                 return;
             }
             
-            // 非 VIP 用户扣费，VIP 用户免扣费
-            int balanceBefore = wallet.getBalance() != null ? wallet.getBalance() : 0;
-            int balanceAfter = balanceBefore;
-            if (!isVip) {
-                // 原子扣费，防止并发 Lost Update
-                int deductRows = tbWalletMapper.deductBalance(userId);
-                if (deductRows == 0) {
-                    context.sendResults("❌ 余额不足\n" +
-                        "当前余额: " + balanceBefore + "\n" +
-                        "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
-                        "请联系客服 QQ: 2167485304 充值");
-                    return;
-                }
-                balanceAfter = balanceBefore - DEDUCT_AMOUNT;
-                wallet.setBalance(balanceAfter);
-                log.info("[QQBot] 扣费成功: user={}, topic={}, 扣费前={}, 扣费后={}, 扣费={}", 
-                    userId, QQ_TOPIC_TYPE, balanceBefore, balanceAfter, DEDUCT_AMOUNT);
-            } else {
-                log.info("[QQBot] VIP用户免扣费: user={}", userId);
+            // 2026-10-28 动态定价：冷门(tria=sk) = (price金币+1元)*10角，普通=30角
+            boolean isColdSk = "zm".equals(cmd) && videoInfo.url != null
+                    && (videoInfo.url.contains("wckbot") || videoInfo.url.contains("yongmufoot"))
+                    && videoInfo.byString != null && videoInfo.byString.equals("sk");
+            deductRef[0] = isColdSk ? coldDeductJiao(videoInfo.price) : DEDUCT_AMOUNT;
+            final int deductAmount = deductRef[0];
+            if (balanceBefore < deductAmount) {
+                context.sendResults("❌ 余额不足\n" +
+                    "当前余额: " + balanceBefore + "\n" +
+                    "提取作品需要: " + deductAmount + "\n\n" +
+                    "请联系客服 QQ: 2167485304 充值（3元/次，单次可充3元）");
+                return;
             }
-            
-            // VIP 用户增加每日提取次数计数
-            if (isVip) {
-                String today = new java.text.SimpleDateFormat("yyyyMMdd").format(new java.util.Date());
-                String dailyKey = "extract:daily:" + userId + ":" + today;
-                jedisClient.incr(dailyKey);
-                try {
-                    java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMdd");
-                    java.util.Date now = new java.util.Date();
-                    java.util.Date midnight = sdf.parse(sdf.format(now));
-                    midnight = new java.util.Date(midnight.getTime() + 24 * 60 * 60 * 1000);
-                    long ttl = (midnight.getTime() - now.getTime()) / 1000;
-                    jedisClient.expire(dailyKey, (int) ttl);
-                } catch (Exception e) {
-                    jedisClient.expire(dailyKey, 86400);
-                }
-                String dailyCount = jedisClient.get(dailyKey);
-                int currentCount = dailyCount == null ? 0 : Integer.parseInt(dailyCount);
-                log.info("[ExtractLimit] QQ用户 {} 今日提取次数: {}/5", userId, currentCount);
-            }
-            
+
             // 3. 判断是否需要下载文件（和 Telegram 一致）
             boolean needDownload = isNeedDownload(videoInfo.byString, videoInfo.url, cmd);
             
-            if (needDownload) {
-                // 需要下载，推送到 Redis 队列
-                String info = buildRedisMessage(userId, videoInfo, content, nickname);
-                boolean isWckbot = videoInfo.url != null && videoInfo.url.contains("wckbot");
-                String queueKey = isWckbot ? "wckbot_extract" : REDIS_QUEUE_KEY;
-                
-                // 事务提交后推送
-                if (TransactionSynchronizationManager.isSynchronizationActive()) {
-                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
-                        @Override
-                        public void afterCommit() {
-                            jedisClient.rpush(queueKey, info);
-                            log.info("[QQBot] 推送到{}队列: user={}, vid={}", isWckbot ? "wckbot_extract" : "下载", userId, vid);
-                        }
-                    });
-                } else {
-                    // 无事务，直接推送
-                    jedisClient.rpush(queueKey, info);
+            // 扣费 lambda：在事务内执行，保证钱包扣费和 outbox 事件同事务
+            Runnable deductOperation = () -> {
+                TbWallet txWallet = getOrCreateWallet(userId, nickname);
+                // 原子扣费（按作品价格），防止并发 Lost Update
+                int deductRows = tbWalletMapper.deductBalanceAmount(userId, deductAmount);
+                if (deductRows == 0) {
+                    throw new RuntimeException("余额不足");
                 }
+                int txBalance = txWallet.getBalance() != null ? txWallet.getBalance() : 0;
+                txWallet.setBalance(txBalance - deductAmount);
+                log.info("[QQBot] 扣费成功: user={}, topic={}, 扣费后={}, 扣费={}", 
+                    userId, QQ_TOPIC_TYPE, txWallet.getBalance(), deductAmount);
+            };
+            
+            if (needDownload) {
+                // 需要下载，推送到 Redis 队列（通过事务 + 事件机制）
+                String info = buildRedisMessage(userId, videoInfo, content, nickname);
+                // 与 RobotServiceImpl 保持一致：仅 zm 指令且 url 含 wckbot 时走 wckbot_extract 队列
+                boolean isWckbot = "zm".equals(cmd) && videoInfo.url != null && videoInfo.url.contains("wckbot");
+                // 2026-09-30 新用户免费额度限制：version=扣费成功次数（每次扣费+1，初始0）。
+                // 注册赠送的前5次（version<5）谁都不能提冷门资源——充值、VIP 均不解锁；用完5次才解锁
+                if (isWckbot && videoInfo.byString != null && videoInfo.byString.equals("sk")
+                        && (wallet.getVersion() == null || wallet.getVersion() < 5)) {
+                    context.sendResults("【新用户免费额度说明】注册赠送的前5次提取仅限普通资源，暂不能提取冷门资源（充值也不能提前解锁）；5次用完后即可提取，充值可加提取次数\n客服 QQ: 2167485304");
+                    return;
+                }
+                String queueName = isWckbot ? "wckbot_extract" : REDIS_QUEUE_KEY;
+                
+                if (extractTransactionService == null) {
+                    log.error("[QQBot] ExtractTransactionService 未注入，无法事务推队列");
+                    context.sendResults("❌ 服务配置异常，请联系客服 QQ: 2167485304");
+                    return;
+                }
+                
+                // 事务内：扣费 + 写 outbox + 发布事件；事务提交后监听器推 Redis
+                extractTransactionService.executeWithEvent(vid, userId, null, "0",
+                        info, queueName, deductOperation);
+                
+                int balanceAfter = balanceBefore - deductAmount;
+                wallet.setBalance(balanceAfter);
+                log.info("[QQBot] 已写入视频推送 outbox，事务提交后推入{}队列: user={}, vid={}",
+                        isWckbot ? "wckbot_extract" : "videos", userId, vid);
                 
                 // 4. 发送提示，同时返回 URL 和网盘链接
                 StringBuilder reply = new StringBuilder();
                 reply.append("⏳ 作品正在准备中，稍后发送...\n");
                 reply.append("（记事本文件，请注意查收）\n");
+                // 2026-09-22 冷门资源前缀提示：wckbot 且 tria=sk
+                if (isWckbot && videoInfo.byString != null && videoInfo.byString.equals("sk")) {
+                    reply.append("【冷门资源，3元一个，私聊机器人提取】\n");
+                }
                 reply.append("------------------------------\n");
-                // URL展示规则：.xyz / t.me / 51play 隐藏，其他展示
-                if (videoInfo.url != null && !videoInfo.url.isEmpty()
-                        && !videoInfo.url.contains(".xyz") && !videoInfo.url.contains("t.me") && !videoInfo.url.contains("51play")) {
+                // URL展示规则：仅 feijipan/quark 网盘链接展示，其他一切链接不展示（随后发视频）
+                if (videoInfo.url != null && (videoInfo.url.contains("feijipan.com") || videoInfo.url.contains("feijipan.cn")
+                        || videoInfo.url.contains("quark.cn") || videoInfo.url.contains("quark.com"))) {
                     reply.append("🔗 URL: ").append(videoInfo.url).append("\n");
                 }
-                // 网盘链接展示规则：feijipan/quark/pikpak允许，其他不展示
+                // 网盘链接展示规则：仅 feijipan/quark 允许，其他不展示
                 boolean isValidPan = videoInfo.byString != null && (
                         videoInfo.byString.contains("feijipan.com") || videoInfo.byString.contains("feijipan.cn")
-                        || videoInfo.byString.contains("quark.cn") || videoInfo.byString.contains("quark.com")
-                        || videoInfo.byString.contains("pikpak"));
+                        || videoInfo.byString.contains("quark.cn") || videoInfo.byString.contains("quark.com"));
                 if (isValidPan && !"tg".equals(cmd)) {
                     reply.append("📦 网盘: ").append(videoInfo.byString).append("\n");
                 }
@@ -319,6 +362,16 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                 // 不需要下载，直接发送简单提示
                 context.sendResults("⏳ 作品正在准备中，稍后发送...\n" +
                     "（记事本文件，请注意查收）");
+                
+                // 事务内扣费（不推队列）
+                if (extractTransactionService != null) {
+                    extractTransactionService.execute(vid, deductOperation);
+                } else {
+                    // 未注入时降级直接扣费（兼容旧逻辑）
+                    deductOperation.run();
+                }
+                int balanceAfter = balanceBefore - deductAmount;
+                wallet.setBalance(balanceAfter);
                 
                 // 生成文本内容并发送（直接发送明文记事本）
                 String result = formatVideoExtract((Object)videoInfo, getSourceName(cmd), cmd, vid, 
@@ -342,9 +395,18 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                 }
             }
             
+
         } catch (Exception e) {
-            log.error("[QQBot] 提取作品失败", e);
-            context.sendResults("❌ 提取失败: " + e.getMessage());
+            String msg = e.getMessage();
+            if (msg != null && msg.contains("余额不足")) {
+                context.sendResults("❌ 余额不足\n" +
+                    "当前余额: " + balanceBefore + "\n" +
+                    "提取作品需要: " + deductRef[0] + "\n\n" +
+                    "请联系客服 QQ: 2167485304 充值（3元/次，单次可充3元）");
+            } else {
+                log.error("[QQBot] 提取作品失败", e);
+                context.sendResults("❌ 提取失败: " + e.getMessage());
+            }
         }
     }
     
@@ -659,11 +721,10 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
             if (v.author != null && !v.author.isEmpty()) {
                 sb.append("作者: ").append(v.author).append("\n");
             }
-            // 网盘链接展示规则：feijipan/quark/pikpak允许，其他不展示
+            // 网盘链接展示规则：仅 feijipan/quark 允许，其他不展示
             boolean isValidPan = v.byString != null && (
                     v.byString.contains("feijipan.com") || v.byString.contains("feijipan.cn")
-                    || v.byString.contains("quark.cn") || v.byString.contains("quark.com")
-                    || v.byString.contains("pikpak"));
+                    || v.byString.contains("quark.cn") || v.byString.contains("quark.com"));
             if (isValidPan && !"tg".equals(cmd)) {
                 sb.append("------------------------------\n");
                 sb.append("📦 网盘链接:\n").append(v.byString).append("\n");
@@ -686,13 +747,13 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
         
         // 添加播放链接
         sb.append("------------------------------\n");
-        // .xyz / t.me / 51play 域名不直接展示 URL，走下载流程
-        if (playUrl != null && !playUrl.isEmpty()
-                && !playUrl.contains(".xyz") && !playUrl.contains("t.me") && !playUrl.contains("51play")) {
+        // 链接展示规则：仅 feijipan/quark 网盘链接展示，其他一切链接不展示，随后发视频
+        if (playUrl != null && (playUrl.contains("feijipan.com") || playUrl.contains("feijipan.cn")
+                || playUrl.contains("quark.cn") || playUrl.contains("quark.com"))) {
             sb.append("▶️ 播放链接:\n");
             sb.append(playUrl).append("\n");
         } else {
-            sb.append("⚠️ 暂无播放链接，请联系客服\n");
+            sb.append("⏳ 随后发视频，请耐心等待\n");
         }
         
         sb.append("------------------------------\n");
@@ -748,7 +809,7 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
             wallet.setBalance(DEFAULT_BALANCE);
             wallet.setCreated(new Date());
             wallet.setUpdated(new Date());
-            wallet.setVersion(1);
+            wallet.setVersion(0);
             
             // 新用户昵称格式: appId_QQBot_clientSecret，例如: 1903777125_QQBot_0A6501BEFBEDC293DB0E9AB802084386
             String autoNickname = (expectedNickname != null) 
@@ -838,17 +899,20 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                "• bc + 作品ID - 提取本地作品\n" +
                "• zm + 作品ID - 提取网页作品\n" +
                "• tg + 作品ID - 提取电报作品\n\n" +
+               "【查询功能】\n" +
+               "• gp + shortId - 查询主播绑定手机号\n\n" +
                "【示例】\n" +
-               "• 美女（明文搜索）\n" +
-               "• U2FsdGVkX1+abc123...（密文搜索）\n" +
+               "• gp113471（查询绑定手机号）\n" +
                "• ww12345（提取作品）\n" +
                "• tl67890（提取作品）\n" +
+               "• 美女（明文搜索）\n" +
+               "• U2FsdGVkX1+abc123...（密文搜索）\n" +
                "• 最新（查看最新作品）\n" +
                "• 帮助（显示本信息）\n\n" +
                "【注意】\n" +
                "• 搜索结果每类仅显示前" + resultLimit + "条\n" +
                "• 如需查看更多，请精确搜索\n" +
-               "• 余额不足请联系客服 QQ: 2167485304 充值";
+               "• 余额不足请联系客服 QQ: 2167485304 充值（3元/次，单次可充3元）";
     }
     
     // ==================== 内部类和方法 ====================
@@ -863,6 +927,7 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
         String wpString;
         String cover;
         String author;
+        Integer price;    // 2026-10-28 zmq_video.price，冷门动态定价用
         int zhindex = 0;
     }
     
@@ -912,6 +977,7 @@ public class QQBotRealDataProcessor implements QQMessageHandler {
                     info.url = zm.getUrl();
                     info.title = zm.getTitle();
                     info.byString = zm.getTria();
+                    info.price = zm.getPrice();   // 2026-10-28 冷门动态定价
                     info.wpString = "";
                     info.cover = zm.getCover();
                     info.author = "";

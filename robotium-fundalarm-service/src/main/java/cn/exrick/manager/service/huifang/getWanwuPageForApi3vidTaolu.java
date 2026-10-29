@@ -51,7 +51,7 @@ public class getWanwuPageForApi3vidTaolu {
 //			executor = Executors.newFixedThreadPool(1);
 //		try {
 
-			lines.add("https://www2.zimuquan25.uk/index.php/vod/show/id/" + types + "/page/");
+			lines.add("https://www1.zimuquan16.com/index.php/vod/show/id/" + types + "/page/");
 			// = Files.readAllLines(filePath);
 //            for (String line : lines) {
 //                System.out.println(line);
@@ -293,7 +293,10 @@ public class getWanwuPageForApi3vidTaolu {
 //								continue;
 //						}
 							String cover = imgs.get(0).attr("data-src");
-							String articleUrlString = cover.replace("vod.jpg", "index.m3u8");
+							String articleUrlString = cover.replace("vod.jpg", "index.m3u8")
+								.replace("poster2.jpg", "index.m3u8")
+								.replace("poster1.jpg", "index.m3u8")
+								.replace("cover.jpg", "index.m3u8");
 
 							String vid = titles.get(0).text();
 							String urlidString = articleUrlString.substring(articleUrlString.indexOf("/video") + 6);
@@ -356,6 +359,11 @@ public class getWanwuPageForApi3vidTaolu {
 
 							// 提取URL
 							String videoUrl = articleUrlString;// title.getStr("videoUrl");
+						// 2026-09-29: 兜底——合成后仍指向图片的说明封面命名又变了，跳过防脏库
+						if (articleUrlString.matches("(?i).*\\.(jpg|jpeg|png|webp)")) {
+							System.out.println("----------------------------跳过封面型URL：" + articleUrlString);
+							continue;
+						}
 							// JSONObject ui = new JSONObject(userInfoRes).getJSONObject("data");
 
 							String tm = "0";
@@ -373,7 +381,7 @@ public class getWanwuPageForApi3vidTaolu {
 								if (detailUrl == null || detailUrl.isEmpty()) {
 									detailUrl = aTag.attr("href");
 									if (detailUrl != null && !detailUrl.startsWith("http")) {
-										detailUrl = "https://www2.zimuquan25.uk" + (detailUrl.startsWith("/") ? "" : "/") + detailUrl;
+										detailUrl = "https://www1.zimuquan16.com" + (detailUrl.startsWith("/") ? "" : "/") + detailUrl;
 									}
 								}
 							}

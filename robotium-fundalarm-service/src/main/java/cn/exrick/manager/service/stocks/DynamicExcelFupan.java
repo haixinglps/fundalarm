@@ -333,7 +333,7 @@ public class DynamicExcelFupan {
 			SimpleDateFormat sdf = new SimpleDateFormat("MM.dd");
 			String dtStr = sdf.format(tm);
 
-			BigDecimal last = stocks.get(j - 1).getAmount();
+			BigDecimal last = stocks.get(j - 1).getVol();
 			CellStyle style2 = workbook.createCellStyle();
 			XSSFColor customRed = new XSSFColor(new java.awt.Color(254, 84, 73));
 			((XSSFCellStyle) style2).setFillForegroundColor(customRed);
@@ -361,7 +361,7 @@ public class DynamicExcelFupan {
 				else if (i == 3)
 					row.createCell(2 + j).setCellValue(dtStr);
 				else if (i == 4)
-					row.createCell(2 + j).setCellValue(stock.getAmount().compareTo(last) > 0 ? "放" : "缩");
+					row.createCell(2 + j).setCellValue(stock.getVol().compareTo(last) > 0 ? "放" : "缩");
 				else if (i == 5) {
 					Cell cell = row.createCell(2 + j);
 					cell.setCellValue(stock.getClose().compareTo(stock.getOpen()) >= 0 ? "红" : "绿");

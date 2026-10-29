@@ -39,6 +39,7 @@ public class QQBotClient {
     private volatile boolean reconnecting = false;
     private volatile int reconnectAttempts = 0;
     private volatile Thread heartbeatThread = null;
+    private volatile long lastHeartbeatAck = 0;  // 最后一次收到心跳ACK(op=11)的时间戳，用于僵尸连接检测
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY = 5000; // 5秒
     
@@ -125,23 +126,19 @@ public class QQBotClient {
                 String wsUrl = getGatewayUrl();
                 log.info("[QQBot] 网关地址: {}", wsUrl);
                 
-                // 3. 连接 WebSocket
+                // 3. 连接 WebSocket（异步，真正的就绪以收到 READY 事件为准）
                 connectWebSocket(wsUrl);
                 
                 running = true;
                 reconnecting = false;
                 
-                // 如果是重连成功，重置计数
-                if (reconnectAttempts > 0) {
-                    log.info("[QQBot] 重连成功（第{}次尝试），重置重连计数", reconnectAttempts);
-                    reconnectAttempts = 0;
-                }
-                
                 log.info("[QQBot] 启动完成，等待消息...");
                 
             } catch (Exception e) {
-                log.error("[QQBot] 启动失败", e);
+                log.error("[QQBot] 启动失败（断网时Token/网关请求会失败），进入重连流程", e);
                 running = false;
+                // 启动失败也走重连流程，避免断网时重连链中断（对齐 Telegram 无限重试策略）
+                scheduleReconnect();
             } finally {
                 starting = false;
             }
@@ -161,7 +158,7 @@ public class QQBotClient {
         if (wsClient != null) {
             wsClient.close();
         }
-        httpClient.dispatcher().executorService().shutdown();
+        // 不关闭 httpClient 的 dispatcher，保证 stop 后仍可重新 start
         httpClient.connectionPool().evictAll();
         log.info("[QQBot] 已停止");
     }
@@ -329,9 +326,17 @@ public class QQBotClient {
                     startHeartbeat(interval);
                     break;
                 case 11: // Heartbeat ACK
+                    lastHeartbeatAck = System.currentTimeMillis();
                     break;
-                case 7: // Reconnect
-                    log.info("[QQBot] 服务器要求重连");
+                case 7: // Reconnect - 服务端要求重连，主动断开以触发 onClose -> 重连流程
+                    log.warn("[QQBot] 服务器要求重连(op=7)，主动断开并重连");
+                    if (wsClient != null) {
+                        try {
+                            wsClient.closeConnection(4000, "server requested reconnect");
+                        } catch (Exception e) {
+                            // ignore，onClose 兜底
+                        }
+                    }
                     break;
             }
             
@@ -357,6 +362,12 @@ public class QQBotClient {
                 ready = true;
                 String sessionId = msg.get("d").getAsJsonObject()
                     .get("session_id").getAsString();
+                // 真正就绪后才重置重连计数（start() 是异步的，不能在那里重置）
+                if (reconnectAttempts > 0) {
+                    log.info("[QQBot] 重连成功（经历{}次尝试），重置重连计数", reconnectAttempts);
+                }
+                reconnectAttempts = 0;
+                reconnecting = false;
                 log.info("[QQBot] 就绪! Session: {}...", sessionId.substring(0, 8));
                 break;
                 
@@ -766,6 +777,10 @@ public class QQBotClient {
         }
         
         heartbeatThread = new Thread(() -> {
+            // 心跳ACK看门狗：初始化为当前时间，避免刚启动就误判
+            lastHeartbeatAck = System.currentTimeMillis();
+            // 超过 2.5 个心跳周期（至少60秒）未收到 ACK，判定为僵尸连接
+            final long ackTimeout = Math.max((long) (interval * 2.5), 60000);
             while (running && wsClient != null && wsClient.isOpen()) {
                 try {
                     Thread.sleep(interval);
@@ -781,6 +796,20 @@ public class QQBotClient {
                         } catch (Exception e) {
                             // send 异常时不中断循环，让 while 条件判断退出
                         }
+                    }
+                    
+                    // 心跳ACK超时检测：网络静默中断（TCP半开/NAT超时）时 onClose 不会触发，
+                    // 必须靠 ACK 超时主动断开，才能进入重连流程
+                    if (System.currentTimeMillis() - lastHeartbeatAck > ackTimeout) {
+                        log.warn("[QQBot] 心跳ACK超时(>{}ms)，连接疑似假死，主动断开触发重连", ackTimeout);
+                        if (wsClient != null) {
+                            try {
+                                wsClient.closeConnection(1006, "heartbeat ack timeout");
+                            } catch (Exception e) {
+                                // ignore
+                            }
+                        }
+                        break;
                     }
                 } catch (InterruptedException e) {
                     break;
@@ -803,16 +832,16 @@ public class QQBotClient {
         reconnecting = true;
         reconnectAttempts++;
         
-        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-            log.error("[QQBot] 重连次数超过最大限制({})，停止重连", MAX_RECONNECT_ATTEMPTS);
-            running = false;
-            reconnecting = false;
-            return;
-        }
-        
         // 指数退避：5秒, 10秒, 20秒, 40秒... 最大60秒
-        long delay = INITIAL_RECONNECT_DELAY * (1L << (reconnectAttempts - 1));
-        delay = Math.min(delay, 60000); // 最大60秒
+        // 超过 MAX_RECONNECT_ATTEMPTS 后不再放弃，转为固定60秒间隔无限重试
+        // （对齐 Telegram 长轮询的自愈策略，避免长时间断网后必须重启进程）
+        long delay;
+        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+            delay = 60000;
+            log.warn("[QQBot] 重连次数超过{}，转为固定60秒间隔无限重试", MAX_RECONNECT_ATTEMPTS);
+        } else {
+            delay = Math.min(INITIAL_RECONNECT_DELAY * (1L << (reconnectAttempts - 1)), 60000);
+        }
         
         final long reconnectDelay = delay;
         log.info("[QQBot] 第{}次重连，{}秒后尝试...", reconnectAttempts, reconnectDelay / 1000);
@@ -835,15 +864,9 @@ public class QQBotClient {
                     wsClient = null;
                 }
                 
-                // 重新启动
+                // 重新启动（start 内部异步执行，重连计数在收到 READY 事件时重置；
+                // 若启动失败，start 的 catch 中会再次调用 scheduleReconnect 续上重连链）
                 start();
-                
-                // 如果启动成功，重置重连计数
-                if (running) {
-                    reconnectAttempts = 0;
-                    reconnecting = false;
-                    log.info("[QQBot] 重连成功，重置重连计数");
-                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 reconnecting = false;

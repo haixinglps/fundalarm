@@ -451,6 +451,49 @@ public class AsyncEventPublisher {
 	/**
 	 * 获取视频封面
 	 */
+	/**
+	 * 判断是否为 VIP 频道缓存链接
+	 */
+	private boolean isVipChannelLink(String url) {
+		return url != null && (url.contains("t.me/c/3576154874") || url.contains("telegram.me/c/3576154874"));
+	}
+
+	/**
+	 * 获取搜索结果/记事本中的会员免费秒发标记
+	 */
+	private String getVipFreeTag(Object video) {
+		if (video instanceof cn.exrick.manager.pojo.Waiwang2Video) {
+			return "【会员免费】【秒发】"; // bc
+		}
+		if (video instanceof cn.exrick.manager.pojo.WaiwangVideo) {
+			return "【会员免费】【秒发】"; // tg
+		}
+		if (video instanceof cn.exrick.manager.pojo.ZmqVideo) {
+			cn.exrick.manager.pojo.ZmqVideo zv = (cn.exrick.manager.pojo.ZmqVideo) video;
+			String tria = zv.getTria();
+			if (isVipChannelLink(tria)) return "【会员免费】【秒发】";
+			// 2026-09-22 wckbot 且 tria=sk（未提取）标注冷门资源
+			String zurl = zv.getUrl();
+			if (zurl != null && zurl.contains("wckbot") && "sk".equals(tria)) return "【冷门资源，3元一个，私聊机器人提取】";
+			return "";
+		}
+		if (video instanceof cn.exrick.manager.pojo.WanwuVideo) {
+			String tria = ((cn.exrick.manager.pojo.WanwuVideo) video).getTria();
+			return isVipChannelLink(tria) ? "【会员免费】【秒发】" : "";
+		}
+		if (video instanceof cn.exrick.manager.pojo.Taolu3Video) {
+			String tria = ((cn.exrick.manager.pojo.Taolu3Video) video).getTria();
+			return isVipChannelLink(tria) ? "【会员免费】【秒发】" : "";
+		}
+		return "";
+	}
+
+	private String getVipFreeTagForChannel(Map<String, Object> video) {
+		if (video == null) return "";
+		String url = video.get("url") != null ? video.get("url").toString() : "";
+		return isVipChannelLink(url) ? "【会员免费】【秒发】" : "";
+	}
+
 	private String getVideoCover(Object video) {
 		if (video instanceof cn.exrick.manager.pojo.ZmqVideo) {
 			String cover = ((cn.exrick.manager.pojo.ZmqVideo) video).getCover();
@@ -612,6 +655,7 @@ public class AsyncEventPublisher {
 		String time;
 		String duration;
 		String author;
+		String tag; // 会员免费秒发标记
 	}
 
 	private void addVideoEntries(List<NotepadEntry> list, String cmd, List<?> videos) {
@@ -624,6 +668,7 @@ public class AsyncEventPublisher {
 			e.time = getVideoTime(v);
 			e.duration = getVideoDuration(v);
 			e.author = getVideoAuthor(v);
+			e.tag = getVipFreeTag(v);
 			list.add(e);
 		}
 	}
@@ -640,6 +685,7 @@ public class AsyncEventPublisher {
 			e.time = dtObj != null ? dtObj.toString() : "";
 			Object ccObj = v.get("cc");
 			e.duration = ccObj != null ? ccObj.toString() : "";
+			e.tag = getVipFreeTagForChannel(v);
 			list.add(e);
 		}
 	}
@@ -649,7 +695,8 @@ public class AsyncEventPublisher {
 		int num = 1;
 		for (NotepadEntry e : list) {
 			String cleanTitle = e.title.replace("\n", "").replace("\r", "");
-			sb.append(num).append(". ").append(cleanTitle).append("\r\n");
+			String tag = e.tag != null ? e.tag : "";
+			sb.append(num).append(". ").append(tag).append(cleanTitle).append("\r\n");
 			if (e.author != null && !e.author.isEmpty()) {
 				sb.append("   作者: ").append(e.author).append("\r\n");
 			}

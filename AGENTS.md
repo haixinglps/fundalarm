@@ -1,3 +1,29 @@
+## 2026-09-30 更新（isearch 搜索引擎停摆月余修复 + 开机自启）
+
+- **案情**：用户发现 bot 的「频道搜索」没了。查实 isearch 检索**服务端**（C 程序 `/home/www/isearch/isearch_124/bin/isearch.8076`，监听 127.0.0.1:8881 查询/8882 加载，索引在 isearch_124/db ~1.3GB）**8月28日就停了**（nohup.out 最后日志 08-28 23:02）。fundalarm（Tomcat ROOT）启动时 SearchFactory.init() 连不上 → 打「搜索引擎初始化失败，已启用数据库搜索降级模式: Connection refused」→ 频道搜索静默跳过。
+- **处置**：`cd /home/www/isearch/isearch_124/bin && setsid nohup ./isearch.8076 &`（索引加载约10秒，8881/8882 即监听）；`bash scripts/isearch.sh "测试" 5` 验证索引完好能出结果；重启 Tomcat 后日志 `搜索引擎初始化成功`（打印在 Spring initialization completed **之前**，别用完成行往后 grep）。
+- **防再犯**：crontab 加 `@reboot`（flock 防重复启动）：`flock -n /tmp/isearch_8076.lock bash -c "cd /home/www/isearch/isearch_124/bin && nohup ./isearch.8076 >> /tmp/isearch_start.log 2>&1"`。
+- **注意**：client 配置在 `webapps/ROOT/WEB-INF/classes/SearchSystem.conf`（127.0.0.1:8881/8882）；服务端二进制的名字后缀（8063~8076）**不是端口号**，8076 起的就是 8881/8882。`scripts/isearch.sh <关键词>` 可随时命令行验证搜索。
+
+## 2026-09-30 更新
+
+### 新用户前5次免费提取禁止冷门资源（version 识别）
+
+**改动**（3 处入口统一拦截，判据 = 冷门(wckbot 且 tria=sk) && (version==null || version<5)）：
+1. `RobotServiceImpl.java` dealGetWork wckbot 分支（群内拦截之前）：回复「【新用户免费额度说明】新用户前5次免费提取仅限普通资源，冷门资源需充值后方可提取 + 客服QQ」，return 不推队列不扣费。
+2. `QQBotRealDataProcessor.java`（isWckbot 判定后、推队列前）：context.sendResults 同款提示 return。**该文件新用户建包 version 从 1 改为 0**（与 deductBalance 计数对齐）。
+3. `GroupNotepadBot.java`（群拦截之后、私聊推队列前）：sendReply 同款提示 return。**新用户建包 version 同样 1→0**。
+
+**version 字段真实语义（重要，勿想当然）**：tb_wallet.version 是 **deductBalance 的乐观锁计数器**（每次扣费 `version=version+1`，SQL 见 TbWalletMapper.xml），初始 0 → version = 扣费成功次数。所以「注册赠送的前5次」= version 0~4。**规则（用户拍板）：这赠送的5次谁都不能提冷门——充值、VIP 均不解锁；version>=5（5次用完）才解锁**。不要画蛇添足加 balance/vip 条件（会误伤「刚充值还没怎么提取」的用户，0925 晚第一版就犯过这个错后按用户要求简化）。
+
+**部署要点（踩过的坑）**：
+- **必须用 `/usr/lib/jvm/java-21-openjdk-amd64/bin/javac` 编译**——默认 javac 是 Java 25（class v69），Tomcat 跑 Java 21（v65）→ `UnsupportedClassVersionError` 整个 Spring 上下文启动失败（服务全挂，21:21 事故）。
+- classpath 需排除 `aspectjweaver-1.8.9.jar`（zip 损坏，javac 直接报错）：`ls WEB-INF/lib/*.jar | grep -v aspectjweaver`。
+- 单类部署即可：编译产物 cp 进 `webapps/ROOT/WEB-INF/classes`（ROOT.war 是 9/25 的旧包，比 exploded 目录旧，Tomcat unpackWARs 不会覆盖新类），然后 restart Tomcat（shutdown.sh -force + startup.sh，~25s）。
+- 验证：catalina.out 出现 `Root WebApplicationContext: initialization completed` + QQ bot `READY`；`/d:` `/D:` 两个 webapp 的 MalformedObjectNameException 是历史遗留噪音，与 ROOT 无关。
+
+旧路径 /home/www/stock/fundalarm 是 3 月遗留，实际部署目标不变。
+
 ## 2026-09-23 更新
 
 ### 冷门资源（wckbot）群内禁止提取：399/386 群内不 enqueue，提示私聊提取

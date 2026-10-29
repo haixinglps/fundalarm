@@ -92,9 +92,15 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
     private cn.exrick.manager.service.impl.ExtractTransactionService extractTransactionService;
     
     // 新用户默认余额
-    private static final int DEFAULT_BALANCE = 5;
-    // 提取作品扣费金额
-    private static final int DEDUCT_AMOUNT = 1;
+    private static final int DEFAULT_BALANCE = 50;
+    // 提取作品扣费金额（角单位，1元=10角）：普通已缓存资源 30角=3元；冷门(tria=sk)=(price金币+1元)*10
+    private static final int DEDUCT_AMOUNT = 30;
+
+    /** 冷门资源(tria=sk)扣款：原价(price金币≈元)+1元利润，单位角；库价缺失按3金币计 */
+    private static int coldDeductJiao(Integer price) {
+        int p = (price != null && price > 0) ? price : 3;
+        return (p + 1) * 10;
+    }
     // Telegram 用户 topic 标识（用于区分不同平台）
     private static final int TG_TOPIC_TYPE = 4;
     
@@ -230,6 +236,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         String cover = null;
         String author = null;
         String byString = null;
+        Integer workPrice = null;   // 2026-10-28 zmq_video.price，冷门动态定价用
         String wpString = null;
         int zhindex = 0;
         boolean found = false;
@@ -282,6 +289,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         cover = v.getCover();
                         author = v.getAuthor() != null ? String.valueOf(v.getAuthor()) : null;
                         byString = v.getTria();
+                        workPrice = v.getPrice();   // 2026-10-28 冷门动态定价
                         wpString = String.valueOf(v.getUptag3());
                         zhindex = 0;
                         // 与 RobotServiceImpl 一致: url 从 getUrl() 获取
@@ -467,14 +475,19 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         }
         
         // 2. 预检余额并获取钱包用于显示（查询到作品后检查）- 仅私聊检测，群聊免费
+        // 2026-10-28 动态定价：冷门(tria=sk) = (price金币+1元)*10角，普通=30角
+        boolean isColdSk = "zm".equals(prefix) && url != null
+                && (url.contains("wckbot") || url.contains("yongmufoot"))
+                && byString != null && byString.equals("sk");
+        final int deductAmount = isColdSk ? coldDeductJiao(workPrice) : DEDUCT_AMOUNT;
         TbWallet wallet = getOrCreateWallet(userId, username, firstName);
         if (isPrivate) {
             // 私聊：检测余额
-            if (wallet.getBalance() == null || wallet.getBalance() < DEDUCT_AMOUNT) {
+            if (wallet.getBalance() == null || wallet.getBalance() < deductAmount) {
                 sendReply(chatId, messageId, "❌ 余额不足\n" +
                     "当前余额: " + (wallet.getBalance() != null ? wallet.getBalance() : 0) + "\n" +
-                    "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
-                    "请联系客服充值");
+                    "提取作品需要: " + deductAmount + "\n\n" +
+                    "请联系客服充值（3元/次，单次可充3元）");
                 return;
             }
         }
@@ -490,15 +503,15 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
             }
             TbWallet txWallet = getOrCreateWallet(userId, username, firstName);
             if (finalIsPrivate) {
-                // 私聊：原子扣费，防止并发 Lost Update
-                int deductRows = tbWalletMapper.deductBalance(userId);
+                // 私聊：原子扣费（按作品价格），防止并发 Lost Update
+                int deductRows = tbWalletMapper.deductBalanceAmount(userId, deductAmount);
                 if (deductRows == 0) {
                     throw new RuntimeException("余额不足");
                 }
                 int txBalance = txWallet.getBalance() != null ? txWallet.getBalance() : 0;
-                txWallet.setBalance(txBalance - DEDUCT_AMOUNT);
+                txWallet.setBalance(txBalance - deductAmount);
                 System.out.println("[GroupNotepadBot] 事务内扣费成功: user=" + userId + ", topic=" + TG_TOPIC_TYPE +
-                    ", 扣费后=" + txWallet.getBalance() + ", 扣费=" + DEDUCT_AMOUNT);
+                    ", 扣费后=" + txWallet.getBalance() + ", 扣费=" + deductAmount);
             } else {
                 // 群聊：不扣费
                 System.out.println("[GroupNotepadBot] 群聊免费提取: user=" + userId + ", 余额=" + txWallet.getBalance());
@@ -552,11 +565,11 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                     dbOperations.run();
                 }
                 if (isPrivate) {
-                    balanceAfter = balanceBefore - DEDUCT_AMOUNT;
+                    balanceAfter = balanceBefore - deductAmount;
                     wallet.setBalance(balanceAfter);
                 }
             } catch (Exception e) {
-                handleExtractException(chatId, messageId, e, balanceBefore);
+                handleExtractException(chatId, messageId, e, balanceBefore, deductAmount);
                 return;
             }
         } else {
@@ -581,11 +594,19 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                 String info = safeDisplayName + "," + safeUrl + "," + safeTitle + "," + cmd + "," + chatId + ","
                         + safeCover + "," + safeByString + "," + safeWpString + "," + safeAuthor + "," + zhindex + ",4," + userId + "," + messageId + "," + (messageThreadId != null ? messageThreadId : "") + ",1" + "," + (wallet.getFeijiUsername() != null ? wallet.getFeijiUsername() : "") + "," + (wallet.getFeijiPassword() != null ? wallet.getFeijiPassword() : "");
                 System.out.println("[GroupNotepadBot] 队列信息: " + info);
-                // 与 RobotServiceImpl 保持一致：仅 zm 指令且 url 含 wckbot 时走 wckbot_extract 队列
+                // 与 RobotServiceImpl 保持一致：zm 指令且 url 含 wckbot/yongmufoot 且未提取(sk) 走冷门流程
                 boolean isWckbot = "zm".equals(prefix) && safeUrl.contains("wckbot");
-                // 2026-09-22 冷门资源群内禁止提取：本 bot 场景即群聊，wckbot 任务一律不推队列，提示私聊提取
-                if (isWckbot) {
+                boolean isYmfSk = "zm".equals(prefix) && safeUrl.contains("yongmufoot") && safeByString.equals("sk");
+                // 2026-09-22 冷门资源群内禁止提取：本 bot 场景即群聊，冷门任务一律不推队列，提示私聊提取
+                if (isWckbot || isYmfSk) {
                     sendReply(chatId, messageId, "冷门资源不能在群里提取，请私聊机器人提取");
+                    return;
+                }
+                // 2026-09-30 新用户免费额度限制（私聊场景）：version=扣费成功次数（每次扣费+1，初始0）。
+                // 注册赠送的前5次（version<5）谁都不能提冷门资源——充值、VIP 均不解锁；用完5次才解锁
+                if ((isWckbot || isYmfSk)
+                        && (wallet.getVersion() == null || wallet.getVersion() < 5)) {
+                    sendReply(chatId, messageId, "【新用户免费额度说明】注册赠送的前5次提取仅限普通资源，暂不能提取冷门资源（充值也不能提前解锁）；5次用完后即可提取，充值可加提取次数\n联系客服");
                     return;
                 }
                 String queueName = "videos";
@@ -600,7 +621,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                     extractTransactionService.executeWithEvent(vid, userId, chatId, "1",
                             info, queueName, dbOperations);
                     if (isPrivate) {
-                        balanceAfter = balanceBefore - DEDUCT_AMOUNT;
+                        balanceAfter = balanceBefore - deductAmount;
                         wallet.setBalance(balanceAfter);
                     }
                     System.out.println("[GroupNotepadBot] 已写入视频推送 outbox，事务提交后推入" + queueName + "队列: " + cmd);
@@ -609,7 +630,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
                         incrDailyExtractCount(userId, 4, prefix, byString);
                     }
                 } catch (Exception e) {
-                    handleExtractException(chatId, messageId, e, balanceBefore);
+                    handleExtractException(chatId, messageId, e, balanceBefore, deductAmount);
                     return;
                 }
             }
@@ -640,13 +661,13 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
     /**
      * 提取事务异常统一处理
      */
-    private void handleExtractException(Long chatId, Integer messageId, Exception e, int balanceBefore) {
+    private void handleExtractException(Long chatId, Integer messageId, Exception e, int balanceBefore, int deductAmount) {
         String msg = e.getMessage();
         if (msg != null && msg.contains("余额不足")) {
             sendReply(chatId, messageId, "❌ 余额不足\n" +
                 "当前余额: " + balanceBefore + "\n" +
-                "提取作品需要: " + DEDUCT_AMOUNT + "\n\n" +
-                "请联系客服充值");
+                "提取作品需要: " + deductAmount + "\n\n" +
+                "请联系客服充值（3元/次，单次可充3元）");
         } else {
             System.err.println("[GroupNotepadBot] 提取事务失败: " + e.getMessage());
             e.printStackTrace();
@@ -1034,7 +1055,7 @@ public class GroupNotepadBot extends TelegramLongPollingBot {
         wallet.setBalance(DEFAULT_BALANCE);
         wallet.setCreated(new Date());
         wallet.setUpdated(new Date());
-        wallet.setVersion(1);
+        wallet.setVersion(0);
         
         // 新用户昵称格式: Telegram用户名或firstName
         String autoNickname = (username != null && !username.isEmpty()) 
